@@ -272,16 +272,19 @@ dialog.full {
 /* Findings */
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .card {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.card-main {
   display: block;
   width: 100%;
   padding: 0;
   border: 0;
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--surface);
+  background: transparent;
   text-align: left;
 }
-.card:active { filter: brightness(0.96); }
+.card-main:active { filter: brightness(0.96); }
 .card-photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--line); }
 .card-body { padding: 12px 14px 14px; }
 .card-issue { font-weight: 600; }
@@ -378,20 +381,25 @@ body.in-report main { padding-bottom: calc(env(safe-area-inset-bottom) + 150px);
 .zone-group:first-child .section-title { margin-top: 4px; }
 .zone-group.current .section-title { color: var(--accent); }
 
-/* Time and location stamp over a photo */
-.photo-wrap { position: relative; }
-.stamp {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  max-width: calc(100% - 16px);
-  padding: 5px 8px;
-  border-radius: 6px;
-  background: rgb(0 0 0 / 0.55);
-  color: #fff;
-  font-size: 0.75rem;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
+/* Location box: coordinates with Map / Copy */
+.loc-box, .coords-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+.loc-box {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.card .loc-box { margin: 0 14px 14px; }
+.loc-text { flex: 1; min-width: 0; }
+.loc-coords { font-variant-numeric: tabular-nums; font-weight: 600; user-select: text; -webkit-user-select: text; }
+.loc-details, .coords-label { font-size: 0.82rem; color: var(--muted); }
+.loc-actions { flex: none; display: flex; gap: 6px; }
+.btn.small { flex: none; padding: 7px 12px; font-size: 0.9rem; text-decoration: none; }
+
+.coords-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.coords-row { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .hint { margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }

@@ -113,20 +113,49 @@ export async function lookupCity(lat, lon) {
 
 // ---------- Display ----------
 
-// Lines of text for a photo's stamp: time, place, coordinates.
-export function stampLines(stamp) {
-  if (!stamp) return [];
-  const lines = [];
-  if (stamp.takenAt) {
-    lines.push(new Date(stamp.takenAt).toLocaleString(undefined, {
-      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
-    }));
+// "33.44838, -112.07404": the format map apps accept when pasted into search.
+export function coordsText(stamp) {
+  return `${stamp.lat.toFixed(5)}, ${stamp.lon.toFixed(5)}`;
+}
+
+// Opens the spot in Apple Maps on iPhone/iPad/Mac and Google Maps elsewhere.
+export function mapUrl(stamp) {
+  const q = `${stamp.lat.toFixed(6)},${stamp.lon.toFixed(6)}`;
+  return /iPhone|iPad|Macintosh/.test(navigator.userAgent)
+    ? `https://maps.apple.com/?ll=${q}&q=${q}`
+    : `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+
+export function formatTime(ms) {
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+// Smaller details under the coordinates: city, accuracy, time taken.
+export function stampDetails(stamp) {
+  if (!stamp) return '';
+  const parts = [];
+  if (stamp.city) parts.push(stamp.city);
+  if (stamp.accuracy) parts.push(`±${stamp.accuracy} m`);
+  if (stamp.takenAt) parts.push(formatTime(stamp.takenAt));
+  return parts.join(' · ');
+}
+
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older browsers: copy through a temporary text box.
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
   }
-  if (stamp.city) lines.push(stamp.city);
-  if (stamp.lat != null) {
-    let c = `${stamp.lat.toFixed(5)}, ${stamp.lon.toFixed(5)}`;
-    if (stamp.accuracy) c += ` (±${stamp.accuracy} m)`;
-    lines.push(c);
-  }
-  return lines;
 }

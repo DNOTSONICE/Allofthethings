@@ -2,7 +2,7 @@ import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto } from './photo.js';
 import { loadIssues } from './issues.js';
-import { getPosition, readExif, lookupCity, stampLines } from './location.js';
+import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -161,9 +161,11 @@ async function folderMenu(folder) {
 
 async function reportMenu(report) {
   const action = await askAction(report.name, [
+    { label: 'Coordinates list', value: 'coords' },
     { label: 'Edit name and date', value: 'edit' },
     { label: 'Delete', value: 'delete', danger: true },
   ]);
+  if (action === 'coords') await showCoordinates(report);
   if (action === 'edit') await editReport(report);
   if (action === 'delete') await removeReport(report);
 }
@@ -212,6 +214,17 @@ const byZone = (a, b) => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 };
 
+// [[zone, findings], ...] in zone order; findings keep the order they were added.
+function groupByZone(findings) {
+  const groups = new Map();
+  for (const f of findings) {
+    const z = f.zone || '';
+    if (!groups.has(z)) groups.set(z, []);
+    groups.get(z).push(f);
+  }
+  return [...groups.keys()].sort(byZone).map((z) => [z, groups.get(z)]);
+}
+
 async function renderReport(id) {
   const report = await db.getReport(id);
   if (!report) return (location.hash = '#/');
@@ -235,22 +248,15 @@ async function renderReport(id) {
   for (const u of photoUrls) URL.revokeObjectURL(u);
   photoUrls = [];
 
-  // One section per zone, in zone order; findings keep the order they were added.
-  const groups = new Map();
-  for (const f of findings) {
-    const z = f.zone || '';
-    if (!groups.has(z)) groups.set(z, []);
-    groups.get(z).push(f);
-  }
-  const sections = [...groups.keys()].sort(byZone).map((z) => {
+  const sections = groupByZone(findings).map(([z, items]) => {
     const section = document.createElement('section');
     section.className = 'zone-group' + (z === zone ? ' current' : '');
     const h = document.createElement('h2');
     h.className = 'section-title';
-    h.textContent = `${zoneName(z)} · ${plural(groups.get(z).length, 'finding')}`;
+    h.textContent = `${zoneName(z)} · ${plural(items.length, 'finding')}`;
     const ul = document.createElement('ul');
     ul.className = 'cards';
-    ul.append(...groups.get(z).map((f, i) => findingCard(f, i + 1)));
+    ul.append(...items.map((f, i) => findingCard(f, i + 1)));
     section.append(h, ul);
     return section;
   });
@@ -298,24 +304,19 @@ $('#zone-current').addEventListener('click', async () => {
 function findingCard(finding, number) {
   const li = document.createElement('li');
   li.dataset.id = finding.id;
+  li.className = 'card';
   const btn = document.createElement('button');
-  btn.className = 'card';
+  btn.className = 'card-main';
   btn.addEventListener('click', () => editFinding(finding));
 
   if (finding.photo) {
-    const wrap = document.createElement('div');
-    wrap.className = 'photo-wrap';
     const img = document.createElement('img');
     const url = URL.createObjectURL(finding.photo);
     photoUrls.push(url);
     img.src = url;
     img.alt = '';
     img.className = 'card-photo';
-    const stamp = document.createElement('div');
-    stamp.className = 'stamp';
-    renderStamp(stamp, finding.stamp);
-    wrap.append(img, stamp);
-    btn.append(wrap);
+    btn.append(img);
   }
   const body = document.createElement('div');
   body.className = 'card-body';
@@ -331,7 +332,85 @@ function findingCard(finding, number) {
   }
   btn.append(body);
   li.append(btn);
+  if (finding.stamp) li.append(locationBox(finding.stamp));
   return li;
+}
+
+// Coordinates with Map and Copy buttons, and city, accuracy and time underneath.
+function locationBox(stamp) {
+  const box = document.createElement('div');
+  box.className = 'loc-box';
+  const text = document.createElement('div');
+  text.className = 'loc-text';
+  const coords = document.createElement('div');
+  coords.className = 'loc-coords';
+  coords.textContent = !stamp ? 'Added with the photo' : stamp.lat != null ? coordsText(stamp) : 'No location';
+  const details = document.createElement('div');
+  details.className = 'loc-details';
+  details.textContent = stampDetails(stamp);
+  details.hidden = !details.textContent;
+  text.append(coords, details);
+  box.append(text);
+  if (stamp && stamp.lat != null) box.append(mapButtons(stamp));
+  return box;
+}
+
+function mapButtons(stamp) {
+  const wrap = document.createElement('div');
+  wrap.className = 'loc-actions';
+  const map = document.createElement('a');
+  map.className = 'btn small outline';
+  map.href = mapUrl(stamp);
+  map.target = '_blank';
+  map.rel = 'noopener';
+  map.textContent = 'Map';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'btn small outline';
+  copy.textContent = 'Copy';
+  copy.addEventListener('click', async () => {
+    const ok = await copyText(coordsText(stamp));
+    copy.textContent = ok ? 'Copied' : 'Copy failed';
+    setTimeout(() => (copy.textContent = 'Copy'), 1500);
+  });
+  wrap.append(map, copy);
+  return wrap;
+}
+
+// Every finding's coordinates in one list, for finding the repairs later.
+async function showCoordinates(report) {
+  const findings = await db.listFindings(report.id);
+  const rows = [];
+  for (const [z, items] of groupByZone(findings)) {
+    items.forEach((f, i) => {
+      if (f.stamp && f.stamp.lat != null) rows.push({ label: `${zoneName(z)} · ${i + 1}. ${f.issue}`, stamp: f.stamp });
+    });
+  }
+  $('#coords-list').replaceChildren(...rows.map((r) => {
+    const li = document.createElement('li');
+    li.className = 'coords-row';
+    const text = document.createElement('div');
+    text.className = 'loc-text';
+    const label = document.createElement('div');
+    label.className = 'coords-label';
+    label.textContent = r.label;
+    const coords = document.createElement('div');
+    coords.className = 'loc-coords';
+    coords.textContent = coordsText(r.stamp);
+    text.append(label, coords);
+    li.append(text, mapButtons(r.stamp));
+    return li;
+  }));
+  $('#coords-empty').hidden = rows.length > 0;
+  $('#coords-copy').hidden = rows.length === 0;
+  const copyAll = $('#coords-copy');
+  copyAll.onclick = async () => {
+    const text = [`${report.name} (${formatDate(report.date)})`, ...rows.map((r) => `${r.label}: ${coordsText(r.stamp)}`)].join('\n');
+    const ok = await copyText(text);
+    copyAll.textContent = ok ? 'Copied' : 'Copy failed';
+    setTimeout(() => (copyAll.textContent = 'Copy all'), 1500);
+  };
+  await showDialog($('#coords-dialog'));
 }
 
 async function askReportDetails(title, submitLabel, initial) {
@@ -370,7 +449,7 @@ const form = {
   title: $('#finding-title'),
   preview: $('#photo-preview'),
   img: $('#photo-img'),
-  stamp: $('#photo-stamp'),
+  location: $('#finding-location'),
   locStatus: $('#location-status'),
   error: $('#photo-error'),
   issue: $('#finding-issue'),
@@ -396,13 +475,7 @@ function setPhoto(blob, stamp = null) {
 
 function setStamp(stamp) {
   form.photoStamp = stamp;
-  renderStamp(form.stamp, stamp);
-}
-
-function renderStamp(el, stamp) {
-  const lines = stampLines(stamp);
-  el.replaceChildren(...lines.map((l) => Object.assign(document.createElement('div'), { textContent: l })));
-  el.hidden = lines.length === 0;
+  form.location.replaceChildren(locationBox(stamp));
 }
 
 function showLocStatus(msg) {
