@@ -10,7 +10,7 @@ Done so far:
 - Coordinates list for a report (report menu): every finding's coordinates, with Map, Copy and Copy all.
 - Zone-by-zone workflow: each report has a current zone (bottom bar, with next/previous buttons) that new findings go into, and findings are grouped by zone.
 
-- Company logo and name (home screen) and a property photo (top-level property folders) for the PDF cover page.
+- Company logo, name and PDF accent color (home screen; blue by default) and a property photo (top-level property folders) for the PDF cover page.
 - Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (links open the map), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
 
 ## Editing the issue list

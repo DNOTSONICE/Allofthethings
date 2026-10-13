@@ -34,7 +34,7 @@
         <span id="company-logo-box" class="company-logo-box"><img id="company-card-img" alt=""></span>
         <span class="row-text">
           <span id="company-card-name" class="row-name">Company logo</span>
-          <span class="row-detail">Shown on the cover of every report. Tap to change.</span>
+          <span class="row-detail">Logo, name and report color for every PDF. Tap to change.</span>
         </span>
       </button>
 
@@ -201,7 +201,7 @@
 
   <dialog id="company-dialog">
     <form data-ok>
-      <h2>Company</h2>
+      <h2>Company and report style</h2>
       <div id="logo-preview" class="logo-preview"><img id="logo-img" alt="Company logo" hidden><span id="logo-empty">No logo yet</span></div>
       <div class="photo-buttons">
         <label class="btn outline">
@@ -213,6 +213,9 @@
       <p id="logo-error" class="error" hidden></p>
       <label class="label" for="company-name">Company name <span class="optional">(optional)</span></label>
       <input id="company-name" class="field" type="text" autocomplete="organization" maxlength="120">
+      <div class="label">Report accent color</div>
+      <div id="accent-swatches" class="swatches"></div>
+      <p class="hint">Used for the lines, headings and highlights in exported PDFs.</p>
       <div class="actions">
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>

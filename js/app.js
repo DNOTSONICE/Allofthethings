@@ -2,14 +2,14 @@ import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
 import { loadIssueGroups } from './issues.js';
-import { buildReportPdf, pdfFileName } from './pdf.js';
+import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -165,15 +165,62 @@ async function editCompany() {
     logo = null;
     show();
   };
+  let accent = (await db.getSetting('accentColor')) || DEFAULT_ACCENT;
+  renderSwatches(accent, (c) => (accent = c));
   const result = await showDialog($('#company-dialog'));
   if (url) URL.revokeObjectURL(url);
   if (result !== 'ok') return;
   await db.setSetting('companyLogo', logo);
   await db.setSetting('companyName', $('#company-name').value.trim());
+  await db.setSetting('accentColor', accent);
   render();
 }
 
 $('#company-card').addEventListener('click', editCompany);
+
+const ACCENT_PRESETS = [
+  ['Blue', DEFAULT_ACCENT],
+  ['Navy', '#1b2a4a'],
+  ['Teal', '#0e7490'],
+  ['Green', '#2e7d32'],
+  ['Red', '#b3261e'],
+  ['Orange', '#d9730d'],
+  ['Charcoal', '#3c4043'],
+];
+
+// Preset color dots plus a "Custom" picker for any brand color.
+function renderSwatches(selected, onPick) {
+  const box = $('#accent-swatches');
+  const make = (name, hex) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch';
+    b.style.background = hex;
+    b.title = name;
+    b.setAttribute('aria-label', name);
+    b.dataset.hex = hex;
+    b.addEventListener('click', () => pick(hex));
+    return b;
+  };
+  const custom = document.createElement('label');
+  custom.className = 'swatch custom';
+  custom.title = 'Custom color';
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = selected;
+  input.addEventListener('input', () => pick(input.value));
+  custom.append(input);
+  const pick = (hex) => {
+    selected = hex.toLowerCase();
+    onPick(selected);
+    for (const el of box.querySelectorAll('.swatch')) {
+      el.classList.toggle('on', el.dataset.hex === selected || (el === custom && !ACCENT_PRESETS.some(([, h]) => h === selected)));
+    }
+    custom.style.background = ACCENT_PRESETS.some(([, h]) => h === selected) ? '' : selected;
+  };
+  box.replaceChildren(...ACCENT_PRESETS.map(([n, h]) => make(n, h)), custom);
+  pick(selected);
+}
 
 // ---------- Property photo (top-level folders) ----------
 
@@ -559,11 +606,12 @@ async function exportPdf(report) {
   const closed = showDialog(dialog);
 
   try {
-    const [path, findings, logo, companyName] = await Promise.all([
+    const [path, findings, logo, companyName, accent] = await Promise.all([
       db.getPath(report.folderId),
       db.listFindings(report.id),
       db.getSetting('companyLogo'),
       db.getSetting('companyName'),
+      db.getSetting('accentColor'),
     ]);
     const property = path.map((f) => f.name);
     const blob = await buildReportPdf({
@@ -572,6 +620,7 @@ async function exportPdf(report) {
       propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
       logo,
       companyName,
+      accent: accent || DEFAULT_ACCENT,
       groups: groupByZone(findings),
       zoneName,
     });

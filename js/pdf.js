@@ -44,261 +44,421 @@ async function imageSize(blob) {
 // Letter size, in points (72 per inch).
 const PAGE_W = 612;
 const PAGE_H = 792;
-const MARGIN = 40;
-const FOOTER = 30;
+const MARGIN = 48;
+const HEADER_H = 40; // running header on inside pages
+const FOOTER_H = 36;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const PHOTO_W = 230;
-const PHOTO_MAX_H = 230;
-const GAP = 14;
+const PHOTO_W = 220;
+const PHOTO_MAX_H = 220;
+const GAP = 16;
 
-const INK = [21, 32, 43];
-const MUTED = [91, 104, 117];
-const ACCENT = [14, 116, 144];
-const LINE = [225, 230, 235];
+const INK = [24, 33, 43];
+const MUTED = [98, 110, 122];
+const LINE = [222, 227, 232];
+const WHITE = [255, 255, 255];
+
+export const DEFAULT_ACCENT = '#1e5aa8';
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  const n = parseInt(m ? m[1] : DEFAULT_ACCENT.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// The accent mixed with white: 0 = accent, 1 = white. Used for light panels.
+const tint = (c, amount) => c.map((v) => Math.round(v + (255 - v) * amount));
 
 /**
  * report:   { name, date }
  * property: folder names from the top level down, e.g. ["Oak Ridge HOA", "North section"]
  * propertyPhoto, logo: Blobs or null, for the cover page
  * companyName: string or null
+ * accent:   hex color for accent lines, e.g. "#1e5aa8"
  * groups:   [[zone, findings], ...] in the order they should print
  * zoneName: zone -> "Zone 4" / "No zone"
  * Returns a Blob.
  */
-export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, groups, zoneName }) {
+export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName }) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ unit: 'pt', format: 'letter' });
   const propertyName = property.join(' / ') || 'Wet check';
+  const ACCENT = hexToRgb(accent);
+  const ACCENT_SOFT = tint(ACCENT, 0.9);
+  const ACCENT_MID = tint(ACCENT, 0.55);
+  const bodyTop = MARGIN + HEADER_H;
+  const bodyBottom = PAGE_H - MARGIN - FOOTER_H;
   let y = MARGIN;
 
   const color = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  const fill = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  const stroke = (c, w = 1) => {
+    doc.setDrawColor(c[0], c[1], c[2]);
+    doc.setLineWidth(w);
+  };
   const font = (style, size) => {
     doc.setFont('helvetica', style);
     doc.setFontSize(size);
   };
-  const lineHeight = (size) => size * 1.3;
+  const lineHeight = (size) => size * 1.32;
+  // Letter-spaced small caps-style labels.
+  const label = (text, x, yy, c = ACCENT, size = 8, opts = {}) => {
+    font('bold', size);
+    color(c);
+    doc.text(text.toUpperCase(), x, yy, { charSpace: 1.2, ...opts });
+  };
 
   function newPage() {
     doc.addPage();
-    y = MARGIN;
+    y = bodyTop;
   }
   function ensure(h) {
-    if (y + h > PAGE_H - MARGIN - FOOTER) newPage();
+    if (y + h > bodyBottom) newPage();
   }
 
   const total = groups.reduce((n, [, items]) => n + items.length, 0);
   const zones = groups.filter(([z]) => z).length;
+  const located = groups.reduce((n, [, items]) => n + items.filter((f) => f.stamp && f.stamp.lat != null).length, 0);
 
-  // ---------- Cover page ----------
-  font('bold', 10);
-  color(ACCENT);
-  doc.text('WET CHECK REPORT', MARGIN, y + 10);
-  y += 24;
-
-  font('bold', 26);
-  color(INK);
-  for (const l of doc.splitTextToSize(propertyName, CONTENT_W)) {
-    doc.text(l, MARGIN, y + 26);
-    y += lineHeight(26);
-  }
-  y += 2;
-  font('normal', 13);
-  color(MUTED);
-  doc.text(`${report.name}  ·  ${formatDate(report.date)}`, MARGIN, y + 13);
-  y += 26;
-
-  // Logo area at the bottom of the cover, measured first so the photo can fill what's left.
-  const LOGO_MAX_W = 220;
-  const LOGO_MAX_H = 90;
   let logoImg = null;
   if (logo) {
     const { w, h } = await imageSize(logo);
-    const scale = Math.min(LOGO_MAX_W / w, LOGO_MAX_H / h);
-    logoImg = { data: await blobToDataUrl(logo), w: w * scale, h: h * scale, format: imageFormat(logo) };
+    logoImg = { data: await blobToDataUrl(logo), w, h, format: imageFormat(logo) };
   }
-  const companyH = (logoImg ? logoImg.h + 10 : 0) + (companyName ? 18 : 0);
-  const companyTop = PAGE_H - MARGIN - companyH - (logoImg || companyName ? 14 : 0);
+  const fitLogo = (maxW, maxH) => {
+    const s = Math.min(maxW / logoImg.w, maxH / logoImg.h);
+    return { w: logoImg.w * s, h: logoImg.h * s };
+  };
 
-  // Summary line under the photo.
-  const summary = `${total} finding${total === 1 ? '' : 's'}` + (zones ? ` in ${zones} zone${zones === 1 ? '' : 's'}` : '');
-  const summaryH = 34;
+  // ================= Cover page =================
+  // Accent band across the top, and a slim bar down the left edge.
+  fill(ACCENT);
+  doc.rect(0, 0, PAGE_W, 10, 'F');
+  fill(ACCENT_MID);
+  doc.rect(0, 10, PAGE_W, 3, 'F');
+  fill(ACCENT);
+  doc.rect(0, 0, 6, PAGE_H, 'F');
+
+  y = 70;
+  label('Wet check report', MARGIN, y, ACCENT, 9);
+  y += 14;
+
+  font('bold', 28);
+  color(INK);
+  for (const l of doc.splitTextToSize(propertyName, CONTENT_W)) {
+    doc.text(l, MARGIN, y + 26);
+    y += lineHeight(28);
+  }
+  // Short accent rule under the title.
+  fill(ACCENT);
+  doc.rect(MARGIN, y + 8, 56, 3, 'F');
+  y += 30;
+
+  // Details: two columns of label / value.
+  const details = [
+    ['Report', report.name],
+    ['Inspection date', formatDate(report.date)],
+  ];
+  if (companyName) details.push(['Prepared by', companyName]);
+  const colW = CONTENT_W / details.length;
+  details.forEach(([k, v], i) => {
+    const x = MARGIN + i * colW;
+    label(k, x, y, MUTED, 7.5);
+    font('bold', 11.5);
+    color(INK);
+    doc.text(doc.splitTextToSize(v, colW - 12)[0], x, y + 16);
+  });
+  y += 34;
+
+  // Space for the bottom block (stats + logo), so the photo can fill what's left.
+  const statsH = 64;
+  const logoBox = logoImg ? fitLogo(200, 70) : null;
+  const bottomH = statsH + 26 + (logoBox ? logoBox.h + 34 : companyName ? 40 : 0);
+  const bottomTop = PAGE_H - MARGIN - bottomH;
 
   if (propertyPhoto) {
     const { w, h } = await imageSize(propertyPhoto);
-    const maxH = companyTop - y - summaryH - 24;
-    const scale = Math.min(CONTENT_W / w, maxH / h);
-    const pw = w * scale;
-    const ph = h * scale;
-    doc.addImage(await blobToDataUrl(propertyPhoto), imageFormat(propertyPhoto), MARGIN + (CONTENT_W - pw) / 2, y, pw, ph);
-    y += ph + 18;
+    const maxH = bottomTop - y - 22;
+    const s = Math.min(CONTENT_W / w, maxH / h);
+    const pw = w * s;
+    const ph = h * s;
+    const px = MARGIN + (CONTENT_W - pw) / 2;
+    doc.addImage(await blobToDataUrl(propertyPhoto), imageFormat(propertyPhoto), px, y, pw, ph);
+    // Accent underline on the photo, like a caption rule.
+    fill(ACCENT);
+    doc.rect(px, y + ph, pw, 4, 'F');
+    y += ph + 4;
+  } else {
+    stroke(LINE);
+    doc.line(MARGIN, y, PAGE_W - MARGIN, y);
   }
 
-  doc.setDrawColor(...LINE);
-  doc.setLineWidth(1);
-  doc.line(MARGIN, y, PAGE_W - MARGIN, y);
-  y += 20;
-  font('bold', 14);
-  color(INK);
-  doc.text(summary, MARGIN, y);
+  // Stat tiles: findings / zones / locations.
+  let sy = bottomTop;
+  const stats = [
+    [String(total), total === 1 ? 'Finding' : 'Findings'],
+    [String(zones), zones === 1 ? 'Zone' : 'Zones'],
+    [String(located), located === 1 ? 'Location mapped' : 'Locations mapped'],
+  ];
+  const tileW = (CONTENT_W - 16) / 3;
+  stats.forEach(([n, k], i) => {
+    const x = MARGIN + i * (tileW + 8);
+    fill(ACCENT_SOFT);
+    doc.rect(x, sy, tileW, statsH, 'F');
+    fill(ACCENT);
+    doc.rect(x, sy, 3, statsH, 'F');
+    font('bold', 24);
+    color(ACCENT);
+    doc.text(n, x + 16, sy + 34);
+    label(k, x + 16, sy + 50, MUTED, 7.5);
+  });
+  sy += statsH + 26;
 
-  if (logoImg || companyName) {
-    let cy = companyTop;
-    font('bold', 8);
-    color(MUTED);
-    doc.text('PREPARED BY', PAGE_W / 2, cy, { align: 'center' });
-    cy += 10;
-    if (logoImg) {
-      doc.addImage(logoImg.data, logoImg.format, (PAGE_W - logoImg.w) / 2, cy, logoImg.w, logoImg.h, undefined, 'FAST'); // PNGs are stored uncompressed otherwise
-      cy += logoImg.h + 10;
-    }
-    if (companyName) {
-      font('bold', 12);
+  if (logoBox || companyName) {
+    stroke(ACCENT, 1);
+    doc.line(MARGIN, sy - 12, PAGE_W - MARGIN, sy - 12);
+    label('Prepared by', MARGIN, sy + 4, MUTED, 7.5);
+    if (logoBox) {
+      doc.addImage(logoImg.data, logoImg.format, MARGIN, sy + 12, logoBox.w, logoBox.h, undefined, 'FAST'); // PNGs are stored uncompressed otherwise
+      if (companyName) {
+        font('bold', 12);
+        color(INK);
+        doc.text(companyName, PAGE_W - MARGIN, sy + 12 + logoBox.h / 2 + 4, { align: 'right' });
+      }
+    } else {
+      font('bold', 14);
       color(INK);
-      doc.text(companyName, PAGE_W / 2, cy + 12, { align: 'center' });
+      doc.text(companyName, MARGIN, sy + 24);
     }
   }
+  fill(ACCENT);
+  doc.rect(0, PAGE_H - 6, PAGE_W, 6, 'F');
 
-  // Findings start on page 2.
+  // ================= Findings =================
   newPage();
+
+  font('bold', 18);
+  color(INK);
+  doc.text('Findings', MARGIN, y + 18);
+  fill(ACCENT);
+  doc.rect(MARGIN, y + 26, 40, 3, 'F');
+  y += 44;
 
   if (!total) {
     font('normal', 12);
     color(MUTED);
     doc.text('No findings were recorded.', MARGIN, y + 12);
+    y += 30;
   }
 
-  // ---------- Findings, by zone ----------
-  const coordRows = [];
+  const zoneHeading = (zone, count, continued = false) => {
+    fill(ACCENT);
+    doc.rect(MARGIN, y, 4, 20, 'F');
+    font('bold', 13);
+    color(INK);
+    const title = zoneName(zone) + (continued ? ' (continued)' : '');
+    doc.text(title, MARGIN + 12, y + 14.5);
+    const tw = doc.getTextWidth(title);
+    font('normal', 9);
+    color(MUTED);
+    const countText = `${count} finding${count === 1 ? '' : 's'}`;
+    doc.text(countText, PAGE_W - MARGIN, y + 14, { align: 'right' });
+    // Accent line running from the title to the count.
+    stroke(ACCENT_MID, 0.8);
+    doc.line(MARGIN + 12 + tw + 10, y + 10, PAGE_W - MARGIN - doc.getTextWidth(countText) - 10, y + 10);
+    y += 20 + 14;
+  };
+
+  const tableRows = [];
 
   for (const [zone, items] of groups) {
-    const heading = () => {
-      ensure(28 + 120); // keep a zone heading with at least the start of its first finding
-      doc.setFillColor(240, 246, 248);
-      doc.rect(MARGIN, y, CONTENT_W, 22, 'F');
-      font('bold', 11);
-      color(ACCENT);
-      doc.text(`${zoneName(zone)}  ·  ${items.length} finding${items.length === 1 ? '' : 's'}`, MARGIN + 8, y + 15);
-      y += 22 + 12;
-    };
-    heading();
+    ensure(34 + 140); // keep a zone heading with the start of its first finding
+    zoneHeading(zone, items.length);
 
     for (let i = 0; i < items.length; i++) {
       const f = items[i];
       const number = i + 1;
 
-      // Photo size, scaled to fit its column.
       let photo = null;
       if (f.photo) {
         const { w, h } = await imageSize(f.photo);
-        const scale = Math.min(PHOTO_W / w, PHOTO_MAX_H / h);
-        photo = { data: await blobToDataUrl(f.photo), w: w * scale, h: h * scale };
+        const s = Math.min(PHOTO_W / w, PHOTO_MAX_H / h);
+        photo = { data: await blobToDataUrl(f.photo), w: w * s, h: h * s };
       }
 
-      const textX = MARGIN + (photo ? PHOTO_W + GAP : 0);
+      const textX = MARGIN + (photo ? PHOTO_W + GAP + 4 : 0);
       const textW = PAGE_W - MARGIN - textX;
+      const badge = 20; // numbered circle beside the issue
+      const titleX = textX + badge + 8;
 
       // Lay out the text first so the row height is known before drawing.
       const lines = [];
       const add = (style, size, c, text, extra = {}) => {
+        const x = extra.x || textX;
         font(style, size);
-        for (const l of doc.splitTextToSize(text, textW)) lines.push({ style, size, c, text: l, ...extra });
+        for (const l of doc.splitTextToSize(text, PAGE_W - MARGIN - x)) lines.push({ style, size, c, text: l, x, ...extra });
       };
-      add('bold', 13, INK, `${number}. ${f.issue}`);
-      add('normal', 10, MUTED, zoneName(f.zone || ''));
+      add('bold', 13, INK, f.issue, { x: titleX });
+      add('normal', 9.5, MUTED, zoneName(f.zone || ''), { x: titleX });
       if (f.note) {
-        lines.push({ gap: 6 });
-        add('normal', 11, INK, f.note);
+        lines.push({ gap: 8 });
+        add('normal', 10.5, INK, f.note);
       }
       if (f.disclaimer) {
-        lines.push({ gap: 4 });
-        add('italic', 10, MUTED, f.disclaimer);
+        lines.push({ gap: 5 });
+        add('italic', 9.5, MUTED, f.disclaimer);
       }
-      lines.push({ gap: 8 });
-      add('bold', 9, MUTED, 'LOCATION');
+      lines.push({ gap: 10, rule: true });
+      lines.push({ label: 'Location', size: 7.5 });
       if (f.stamp && f.stamp.lat != null) {
-        add('bold', 11, INK, coordsText(f.stamp), { link: mapUrl(f.stamp) });
-        add('normal', 9, ACCENT, 'Open in map', { link: mapUrl(f.stamp) });
-        coordRows.push({ label: `${zoneName(zone)} · ${number}. ${f.issue}`, stamp: f.stamp });
+        add('bold', 11, ACCENT, coordsText(f.stamp), { link: mapUrl(f.stamp) });
+        tableRows.push({ zone: zoneName(zone), n: number, issue: f.issue, stamp: f.stamp });
       } else {
-        add('normal', 11, MUTED, 'No location recorded');
+        add('normal', 10.5, MUTED, 'No location recorded');
+        tableRows.push({ zone: zoneName(zone), n: number, issue: f.issue, stamp: null });
       }
-      const details = stampDetails(f.stamp);
-      if (details) add('normal', 9, MUTED, details);
+      const extra = stampDetails(f.stamp);
+      if (extra) add('normal', 8.5, MUTED, extra);
 
       const textH = lines.reduce((h, l) => h + (l.gap || lineHeight(l.size)), 0);
       const rowH = Math.max(photo ? photo.h : 0, textH);
-      if (y + rowH > PAGE_H - MARGIN - FOOTER) {
+      if (y + rowH > bodyBottom) {
         newPage();
-        // Repeat the zone name at the top of the new page.
-        font('bold', 9);
-        color(ACCENT);
-        doc.text(`${zoneName(zone).toUpperCase()} (CONTINUED)`, MARGIN, y + 9);
-        y += 20;
+        zoneHeading(zone, items.length, true);
       }
 
-      if (photo) doc.addImage(photo.data, 'JPEG', MARGIN, y, photo.w, photo.h);
+      if (photo) {
+        doc.addImage(photo.data, 'JPEG', MARGIN, y, photo.w, photo.h);
+        stroke(LINE, 0.5);
+        doc.rect(MARGIN, y, photo.w, photo.h, 'S');
+      }
+
+      // Number badge.
+      fill(ACCENT);
+      doc.circle(textX + badge / 2, y + badge / 2 - 2, badge / 2, 'F');
+      font('bold', 10);
+      color(WHITE);
+      doc.text(String(number), textX + badge / 2, y + badge / 2 + 1.5, { align: 'center' });
 
       let ty = y;
       for (const l of lines) {
         if (l.gap) {
+          if (l.rule) {
+            stroke(ACCENT_MID, 0.6);
+            doc.line(textX, ty + l.gap / 2, textX + 36, ty + l.gap / 2);
+          }
           ty += l.gap;
+          continue;
+        }
+        if (l.label) {
+          label(l.label, textX, ty + l.size, ACCENT, l.size);
+          ty += lineHeight(l.size) + 1;
           continue;
         }
         font(l.style, l.size);
         color(l.c);
         const baseline = ty + l.size;
-        if (l.link) doc.textWithLink(l.text, textX, baseline, { url: l.link });
-        else doc.text(l.text, textX, baseline);
+        if (l.link) doc.textWithLink(l.text, l.x, baseline, { url: l.link });
+        else doc.text(l.text, l.x, baseline);
         ty += lineHeight(l.size);
       }
 
       y += rowH + GAP;
       if (i < items.length - 1) {
-        doc.setDrawColor(...LINE);
+        stroke(LINE, 0.75);
         doc.line(MARGIN, y - GAP / 2, PAGE_W - MARGIN, y - GAP / 2);
       }
     }
-    y += 8;
+    y += 14;
   }
 
-  // ---------- Coordinates list ----------
-  if (coordRows.length) {
-    ensure(60);
-    y += 6;
-    font('bold', 14);
+  // ================= Summary table =================
+  if (tableRows.length) {
+    ensure(110);
+    y += 4;
+    font('bold', 18);
     color(INK);
-    doc.text('Coordinates', MARGIN, y + 14);
-    y += 22;
+    doc.text('Summary of findings', MARGIN, y + 18);
+    fill(ACCENT);
+    doc.rect(MARGIN, y + 26, 40, 3, 'F');
+    y += 38;
     font('normal', 9);
     color(MUTED);
-    doc.text('Paste into any map app, or tap a coordinate to open it.', MARGIN, y + 9);
-    y += 20;
+    doc.text('Tap a location to open it in a map app, or paste the coordinates into any map search.', MARGIN, y + 9);
+    y += 22;
 
-    const colX = MARGIN + CONTENT_W * 0.6;
-    for (const r of coordRows) {
-      font('normal', 10);
-      const labelLines = doc.splitTextToSize(r.label, colX - MARGIN - 10);
-      const h = labelLines.length * lineHeight(10) + 8;
-      ensure(h);
+    const cols = [
+      { title: 'Zone', x: MARGIN + 10, w: 70 },
+      { title: '#', x: MARGIN + 82, w: 20 },
+      { title: 'Issue', x: MARGIN + 106, w: 230 },
+      { title: 'Location', x: MARGIN + 346, w: CONTENT_W - 356 },
+    ];
+    const head = () => {
+      fill(ACCENT);
+      doc.rect(MARGIN, y, CONTENT_W, 22, 'F');
+      for (const c of cols) label(c.title, c.x, y + 14.5, WHITE, 7.5);
+      y += 22;
+    };
+    head();
+    tableRows.forEach((r, k) => {
+      font('normal', 9.5);
+      const issueLines = doc.splitTextToSize(r.issue, cols[2].w);
+      const h = Math.max(1, issueLines.length) * lineHeight(9.5) + 10;
+      if (y + h > bodyBottom) {
+        newPage();
+        head();
+      }
+      if (k % 2) {
+        fill(ACCENT_SOFT);
+        doc.rect(MARGIN, y, CONTENT_W, h, 'F');
+      }
+      const base = y + 6 + 9.5;
       color(INK);
-      labelLines.forEach((l, k) => doc.text(l, MARGIN, y + 10 + k * lineHeight(10)));
-      font('bold', 10);
-      color(ACCENT);
-      doc.textWithLink(coordsText(r.stamp), colX, y + 10, { url: mapUrl(r.stamp) });
+      doc.text(r.zone, cols[0].x, base);
+      doc.text(String(r.n), cols[1].x, base);
+      issueLines.forEach((l, j) => doc.text(l, cols[2].x, base + j * lineHeight(9.5)));
+      if (r.stamp) {
+        font('bold', 9.5);
+        color(ACCENT);
+        doc.textWithLink(coordsText(r.stamp), cols[3].x, base, { url: mapUrl(r.stamp) });
+      } else {
+        color(MUTED);
+        doc.text('—', cols[3].x, base);
+      }
       y += h;
-      doc.setDrawColor(...LINE);
-      doc.line(MARGIN, y - 4, PAGE_W - MARGIN, y - 4);
-    }
+    });
+    stroke(ACCENT, 1);
+    doc.line(MARGIN, y, PAGE_W - MARGIN, y);
   }
 
-  // ---------- Footer on every page ----------
+  // ================= Header and footer on inside pages =================
   const pages = doc.getNumberOfPages();
-  for (let p = 2; p <= pages; p++) { // no footer on the cover
+  for (let p = 2; p <= pages; p++) {
     doc.setPage(p);
+    fill(ACCENT);
+    doc.rect(0, 0, PAGE_W, 5, 'F');
+    // Header: company (or report title) left, property and date right, accent rule under.
+    if (logoImg) {
+      const lb = fitLogo(90, 22);
+      doc.addImage(logoImg.data, logoImg.format, MARGIN, MARGIN - 8, lb.w, lb.h, 'logo', 'FAST');
+    } else {
+      label(companyName || 'Wet check report', MARGIN, MARGIN + 8, ACCENT, 8);
+    }
+    font('normal', 8.5);
+    color(MUTED);
+    doc.text(`${propertyName}  ·  ${formatDate(report.date)}`, PAGE_W - MARGIN, MARGIN + 8, { align: 'right' });
+    stroke(ACCENT, 1.2);
+    doc.line(MARGIN, MARGIN + 18, PAGE_W - MARGIN, MARGIN + 18);
+
+    // Footer: thin rule, report name left, page number right.
+    const fy = PAGE_H - MARGIN + 6;
+    stroke(LINE, 0.75);
+    doc.line(MARGIN, fy - 14, PAGE_W - MARGIN, fy - 14);
     font('normal', 8);
     color(MUTED);
-    doc.text(`${propertyName}  ·  ${formatDate(report.date)}`, MARGIN, PAGE_H - MARGIN + 10);
-    doc.text(`Page ${p} of ${pages}`, PAGE_W - MARGIN, PAGE_H - MARGIN + 10, { align: 'right' });
+    doc.text(`${report.name}${companyName ? `  ·  ${companyName}` : ''}`, MARGIN, fy);
+    font('bold', 8);
+    color(ACCENT);
+    doc.text(`${p} / ${pages}`, PAGE_W - MARGIN, fy, { align: 'right' });
   }
 
   return doc.output('blob');
