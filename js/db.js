@@ -228,3 +228,64 @@ export async function getSetting(key) {
 export async function setSetting(key, value) {
   await put('settings', { key, value });
 }
+
+// ---------- Backup ----------
+
+async function getAll(store) {
+  const db = await openDb();
+  return promisify(db.transaction(store).objectStore(store).getAll());
+}
+
+// Every record in the app, for a full backup.
+export async function dumpAll() {
+  const [folders, reports, findings, settings] = await Promise.all(
+    ['folders', 'reports', 'findings', 'settings'].map(getAll)
+  );
+  return { folders, reports, findings, settings };
+}
+
+// One folder with everything inside it, for a property backup.
+export async function dumpFolder(id) {
+  const ids = [id, ...(await listDescendantIds(id))];
+  const folders = (await Promise.all(ids.map(getFolder))).filter(Boolean);
+  const reports = (await Promise.all(ids.map((f) => getAllBy('reports', 'folderId', f)))).flat();
+  const findings = (await Promise.all(reports.map((r) => getAllBy('findings', 'reportId', r.id)))).flat();
+  return { folders, reports, findings, settings: [] };
+}
+
+// Writes backup records in one transaction. With replace, everything already on the
+// device is cleared first; otherwise records are added, and where the same item exists
+// on both sides the more recently changed copy wins.
+export async function restore({ folders = [], reports = [], findings = [], settings = [] }, { replace = false } = {}) {
+  const db = await openDb();
+  const stores = ['folders', 'reports', 'findings', 'settings'];
+  const existing = {};
+  if (!replace) {
+    for (const s of ['folders', 'reports', 'findings']) {
+      existing[s] = new Map((await getAll(s)).map((r) => [r.id, r]));
+    }
+    existing.settingKeys = new Set((await getAll('settings')).filter((r) => r.value != null && r.value !== '').map((r) => r.key));
+  }
+  const folderIds = new Set([...(existing.folders ? existing.folders.keys() : []), ...folders.map((f) => f.id)]);
+
+  const tx = db.transaction(stores, 'readwrite');
+  if (replace) for (const s of stores) tx.objectStore(s).clear();
+  let written = 0;
+  const write = (store, rec) => {
+    const old = existing[store] && existing[store].get(rec.id);
+    if (old && (old.updatedAt || 0) > (rec.updatedAt || 0)) return; // keep the newer copy on this device
+    tx.objectStore(store).put(rec);
+    written++;
+  };
+  for (const f of folders) {
+    // A property backup's top folder lands at the top level if its old parent isn't here.
+    const parentId = f.parentId === ROOT || folderIds.has(f.parentId) ? f.parentId : ROOT;
+    write('folders', { ...f, parentId });
+  }
+  for (const r of reports) write('reports', r);
+  for (const f of findings) write('findings', f);
+  // When adding, this device's own logo, color and so on stay; the backup only fills gaps.
+  for (const s of settings) if (replace || !existing.settingKeys.has(s.key)) tx.objectStore('settings').put(s);
+  await txDone(tx);
+  return written;
+}

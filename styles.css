@@ -527,3 +527,14 @@ body:not(.in-report) .zone-panel { display: none; }
   background: conic-gradient(#e53935, #fdd835, #43a047, #1e88e5, #8e24aa, #e53935);
 }
 .swatch.custom input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; cursor: pointer; }
+
+/* Backup and restore */
+.backup-icon { color: var(--accent); background: var(--bg); }
+.backup-icon svg { width: 28px; height: 28px; }
+.row-detail.warn { color: var(--danger); }
+.btn.wide { display: block; width: 100%; margin-top: 10px; text-align: center; padding: 13px; }
+.backup-last { margin: 12px 0 4px; font-weight: 600; color: var(--text); }
+#backup-dialog .hint { margin: 0; }
+#backup-dialog .hint + .hint, #backup-dialog label + .hint { margin-top: 12px; }
+.sheet h2 { white-space: normal; }
+.toast.ok { background: #2e7d32; }

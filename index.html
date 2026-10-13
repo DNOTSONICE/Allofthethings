@@ -38,6 +38,16 @@
         </span>
       </button>
 
+      <button id="backup-card" class="company-card" hidden>
+        <span class="company-logo-box backup-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18zm5-8v6m0-6l-2.5 2.5M12 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="row-text">
+          <span class="row-name">Backup and restore</span>
+          <span id="backup-card-detail" class="row-detail">Last backup: never</span>
+        </span>
+      </button>
+
       <div id="property-photo" class="property-photo" hidden>
         <img id="property-photo-img" alt="Property photo" hidden>
         <div class="property-photo-body">
@@ -224,6 +234,23 @@
   </dialog>
 
   <div id="toast" class="toast" role="alert" hidden></div>
+
+  <dialog id="backup-dialog">
+    <form method="dialog">
+      <h2>Backup and restore</h2>
+      <p class="hint">Everything is stored only on this phone. A backup file holds all your properties, reports, findings and photos, plus your logo and settings. Save it to Files, a cloud drive or email so you don't lose your work, or use it to move everything to another phone.</p>
+      <p id="backup-last" class="backup-last"></p>
+      <button id="backup-all" type="button" class="btn primary wide">Back up everything</button>
+      <label class="btn outline wide">
+        <input id="restore-file" type="file" accept=".json,application/json" hidden>
+        Restore from a backup file
+      </label>
+      <p class="hint">To back up or share a single property, use ⋮ next to its folder.</p>
+      <div class="actions">
+        <button class="btn" value="cancel">Close</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="pdf-dialog">
     <form method="dialog">

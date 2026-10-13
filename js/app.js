@@ -3,13 +3,14 @@ import { showDialog, askName, askAction, askConfirm, plural, formatDate, today }
 import { compressPhoto, compressLogo } from './photo.js';
 import { loadIssueGroups } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
-import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText } from './location.js';
+import { createBackup, readBackup, restoreBackup } from './backup.js';
+import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText, formatTime } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -17,9 +18,10 @@ const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may 
 // Shows problems on screen instead of failing silently.
 
 let toastTimer = null;
-function showToast(msg) {
+function showToast(msg, kind = 'error') {
   const t = $('#toast');
   t.textContent = msg;
+  t.classList.toggle('ok', kind === 'ok');
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.hidden = true), 8000);
@@ -108,6 +110,7 @@ async function renderFolder(id) {
     ? 'Nothing here yet. Tap <strong>New</strong> to add a wet check report or a folder.'
     : 'No properties yet. Tap <strong>New</strong> to add a folder for one.';
   await renderCompanyCard(!here);
+  await renderBackupCard(!here);
   renderPropertyPhoto(path.length === 1 ? here : null);
   $('#app-version').hidden = !!here;
   $('#app-version').textContent = `App version ${APP_VERSION}`;
@@ -309,8 +312,10 @@ function reportRow(report) {
 async function folderMenu(folder) {
   const action = await askAction(folder.name, [
     { label: 'Rename', value: 'rename' },
+    { label: 'Back up or share this property', value: 'backup' },
     { label: 'Delete', value: 'delete', danger: true },
   ]);
+  if (action === 'backup') await backUp(folder);
   if (action === 'rename') {
     const name = await askName('Rename folder', 'Save', folder.name);
     if (!name || name === folder.name) return;
@@ -593,52 +598,35 @@ async function showCoordinates(report) {
 
 // ---------- PDF export ----------
 
-let pdfUrl = null;
+let fileUrl = null;
 
-async function exportPdf(report) {
+// Shows the "file ready" dialog: build() makes the file while a working message shows,
+// then phones get Share (save to Files, email, text) and others get Download.
+async function deliverFile({ working, workingText, ready, failed, canOpen = false, build }) {
   const dialog = $('#pdf-dialog');
   const share = $('#pdf-share');
   const download = $('#pdf-download');
   const open = $('#pdf-open');
-  $('#pdf-title').textContent = 'Making PDF…';
-  $('#pdf-text').textContent = 'This takes a few seconds for reports with lots of photos.';
+  $('#pdf-title').textContent = working;
+  $('#pdf-text').textContent = workingText;
   share.hidden = download.hidden = open.hidden = true;
   const closed = showDialog(dialog);
 
   try {
-    const [path, findings, logo, companyName, accent] = await Promise.all([
-      db.getPath(report.folderId),
-      db.listFindings(report.id),
-      db.getSetting('companyLogo'),
-      db.getSetting('companyName'),
-      db.getSetting('accentColor'),
-    ]);
-    const property = path.map((f) => f.name);
-    const blob = await buildReportPdf({
-      report,
-      property,
-      propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
-      logo,
-      companyName,
-      accent: accent || DEFAULT_ACCENT,
-      groups: groupByZone(findings),
-      zoneName,
-    });
-    const name = pdfFileName(property, report);
-    const file = new File([blob], name, { type: 'application/pdf' });
-
-    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    pdfUrl = URL.createObjectURL(blob);
-    download.href = open.href = pdfUrl;
+    const { blob, name, detail } = await build();
+    const file = new File([blob], name, { type: blob.type });
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
+    fileUrl = URL.createObjectURL(blob);
+    download.href = open.href = fileUrl;
     download.download = name;
 
-    $('#pdf-title').textContent = 'PDF ready';
-    $('#pdf-text').textContent = `${name} (${Math.max(1, Math.round(blob.size / 1024))} KB)`;
-    // Phones get a Share button (save to Files, email, text); others get a download.
+    $('#pdf-title').textContent = ready;
+    const size = blob.size > 1024 * 1024 ? `${(blob.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(blob.size / 1024))} KB`;
+    $('#pdf-text').textContent = `${name} (${size})${detail ? `. ${detail}` : ''}`;
     const canShare = navigator.canShare && navigator.canShare({ files: [file] });
     share.hidden = !canShare;
     download.hidden = !!canShare;
-    open.hidden = false;
+    open.hidden = !canOpen;
     share.onclick = async () => {
       try {
         await navigator.share({ files: [file], title: name });
@@ -647,11 +635,112 @@ async function exportPdf(report) {
       }
     };
   } catch (err) {
-    $('#pdf-title').textContent = 'Couldn’t make the PDF';
+    $('#pdf-title').textContent = failed;
     $('#pdf-text').textContent = err && err.message ? err.message : 'Something went wrong. Try again.';
   }
   await closed;
 }
+
+function exportPdf(report) {
+  return deliverFile({
+    working: 'Making PDF…',
+    workingText: 'This takes a few seconds for reports with lots of photos.',
+    ready: 'PDF ready',
+    failed: 'Couldn’t make the PDF',
+    canOpen: true,
+    build: async () => {
+      const [path, findings, logo, companyName, accent] = await Promise.all([
+        db.getPath(report.folderId),
+        db.listFindings(report.id),
+        db.getSetting('companyLogo'),
+        db.getSetting('companyName'),
+        db.getSetting('accentColor'),
+      ]);
+      const property = path.map((f) => f.name);
+      const blob = await buildReportPdf({
+        report,
+        property,
+        propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
+        logo,
+        companyName,
+        accent: accent || DEFAULT_ACCENT,
+        groups: groupByZone(findings),
+        zoneName,
+      });
+      return { blob, name: pdfFileName(property, report) };
+    },
+  });
+}
+
+// ---------- Backup and restore ----------
+
+const countsText = (c) => [plural(c.folders, 'folder'), plural(c.reports, 'report'), plural(c.findings, 'finding')].join(', ');
+
+async function renderBackupCard(show) {
+  $('#backup-card').hidden = !show;
+  if (!show) return;
+  const last = await db.getSetting('lastBackupAt');
+  const detail = $('#backup-card-detail');
+  detail.textContent = last ? `Last backup: ${formatTime(last)}` : 'Last backup: never. Tap to back up.';
+  // Nudge when it's been more than a week.
+  detail.classList.toggle('warn', !last || Date.now() - last > 7 * 24 * 3600 * 1000);
+}
+
+function backUp(folder = null) {
+  return deliverFile({
+    working: 'Making backup…',
+    workingText: 'Packing up your reports and photos.',
+    ready: 'Backup ready',
+    failed: 'Couldn’t make the backup',
+    build: async () => {
+      const { blob, name, counts } = await createBackup(APP_VERSION, folder ? folder.id : null);
+      return { blob, name, detail: `Includes ${countsText(counts)}. Save it somewhere off this phone.` };
+    },
+  }).then(() => render());
+}
+
+$('#backup-card').addEventListener('click', async () => {
+  const last = await db.getSetting('lastBackupAt');
+  $('#backup-last').textContent = last ? `Last full backup: ${formatTime(last)}` : 'No full backup made on this phone yet.';
+  showDialog($('#backup-dialog'));
+});
+
+$('#backup-all').addEventListener('click', () => {
+  $('#backup-dialog').close('cancel');
+  backUp();
+});
+
+$('#restore-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  $('#backup-dialog').close('cancel');
+  let backup;
+  try {
+    backup = await readBackup(file);
+  } catch (err) {
+    await askConfirm('Can’t restore', err.message, 'OK');
+    return;
+  }
+  const what = backup.kind === 'property' ? `the property “${backup.name}”` : 'a full backup';
+  const when = backup.exportedAt ? ` from ${formatTime(backup.exportedAt)}` : '';
+  const actions = [{ label: 'Add to this phone', value: 'merge' }];
+  if (backup.kind !== 'property') actions.push({ label: 'Replace everything on this phone', value: 'replace', danger: true });
+  const choice = await askAction(`This file has ${what}${when}: ${countsText(backup.counts)}.`, actions);
+  if (!choice) return;
+  if (choice === 'replace') {
+    const ok = await askConfirm(
+      'Replace everything?',
+      'Everything on this phone will be deleted and replaced with the backup. Anything not in the backup will be lost. This can’t be undone.',
+      'Replace'
+    );
+    if (!ok) return;
+  }
+  await restoreBackup(backup, { replace: choice === 'replace' });
+  location.hash = '#/';
+  await render();
+  showToast(`Restored ${countsText(backup.counts)}.`, 'ok');
+});
 
 async function askReportDetails(title, submitLabel, initial) {
   $('#report-dialog-title').textContent = title;

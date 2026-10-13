@@ -12,6 +12,7 @@ Done so far:
 
 - Company logo, name and PDF accent color (home screen; blue by default) and a property photo (top-level property folders) for the PDF cover page.
 - Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (links open the map), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
+- Backup and restore (home screen): save a backup file of everything, or one property from its ⋮ menu, with photos, logo and settings included. Share it to Files, Drive or email. Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
 
 ## Editing the issue list
 
