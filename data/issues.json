@@ -1,28 +1,72 @@
 {
-  "_help": "The choices in the Issue dropdown, in this order. Add, remove or rename lines, keeping the quotes and commas. Old findings keep their issue even if it's removed here.",
-  "issues": [
-    "Broken head",
-    "Broken riser",
-    "Clogged nozzle",
-    "Misaligned head",
-    "Head sunken or low",
-    "Head tilted",
-    "Wrong or mismatched nozzle",
-    "Overspray onto hardscape",
-    "Blocked by plants or obstruction",
-    "Coverage gap or dry spot",
-    "Low pressure",
-    "High pressure or misting",
-    "Lateral line leak",
-    "Mainline leak",
-    "Valve leaking or weeping",
-    "Valve not opening",
-    "Valve not closing",
-    "Drip line damaged",
-    "Drip emitter clogged or missing",
-    "Controller issue",
-    "Rain or weather sensor issue",
-    "Backflow issue",
-    "Other"
+  "_help": "The Issue dropdown, in groups. Each group has a name and its issues, shown in this order. Add, remove or rename lines, keeping the quotes, commas and brackets. Findings that used an issue removed here keep it.",
+  "groups": [
+    {
+      "name": "Broken heads",
+      "issues": [
+        "Broken 4\" pop-up",
+        "Broken 6\" pop-up",
+        "Broken 12\" pop-up",
+        "Broken mini rotor",
+        "Broken standard rotor"
+      ]
+    },
+    {
+      "name": "Head and nozzle adjustments",
+      "issues": [
+        "Clogged nozzle",
+        "Misaligned head",
+        "Head sunken or low",
+        "Head tilted",
+        "Wrong or mismatched nozzle",
+        "Broken riser"
+      ]
+    },
+    {
+      "name": "Coverage and pressure",
+      "issues": [
+        "Overspray onto hardscape",
+        "Blocked by plants or obstruction",
+        "Coverage gap or dry spot",
+        "Low pressure",
+        "High pressure or misting"
+      ]
+    },
+    {
+      "name": "Pipe issues",
+      "issues": [
+        "Lateral line leak",
+        "Mainline leak",
+        "Backflow issue"
+      ]
+    },
+    {
+      "name": "Valve issues",
+      "issues": [
+        "Valve leaking or weeping",
+        "Valve not opening",
+        "Valve not closing"
+      ]
+    },
+    {
+      "name": "Drip issues",
+      "issues": [
+        "Drip line damaged",
+        "Drip emitter clogged or missing"
+      ]
+    },
+    {
+      "name": "Controller and sensors",
+      "issues": [
+        "Controller issue",
+        "Rain or weather sensor issue"
+      ]
+    },
+    {
+      "name": "Other",
+      "issues": [
+        "Other"
+      ]
+    }
   ]
 }

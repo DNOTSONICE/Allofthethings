@@ -15,7 +15,11 @@ Done so far:
 
 ## Editing the issue list
 
-The Issue dropdown comes from `data/issues.json`. Edit the `issues` list there (keep the quotes and commas). Findings that used an issue you remove keep it.
+The Issue dropdown comes from `data/issues.json`, as named groups (Broken heads, Valve issues, ...), each with its list of issues. Edit the groups there, keeping the quotes, commas and brackets. Findings that used an issue you remove keep it.
+
+## Troubleshooting disclaimer
+
+Each finding has an optional checkbox that adds a troubleshooting disclaimer, shown on the finding and in the PDF. The wording defaults to "*Troubleshooting required. Additional proposals may be required to complete this repair." and can be edited and saved from the finding form.
 
 ## Run locally
 

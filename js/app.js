@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
-import { loadIssues } from './issues.js';
+import { loadIssueGroups } from './issues.js';
 import { buildReportPdf, pdfFileName } from './pdf.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText } from './location.js';
 
@@ -9,7 +9,9 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 8;
+const APP_VERSION = 9;
+
+const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
 // ---------- Error banner ----------
 // Shows problems on screen instead of failing silently.
@@ -453,6 +455,12 @@ function findingCard(finding, number) {
     n.textContent = finding.note;
     body.append(n);
   }
+  if (finding.disclaimer) {
+    const d = document.createElement('div');
+    d.className = 'card-disclaimer';
+    d.textContent = finding.disclaimer;
+    body.append(d);
+  }
   btn.append(body);
   li.append(btn);
   if (finding.stamp) li.append(locationBox(finding.stamp));
@@ -638,6 +646,9 @@ const form = {
   issue: $('#finding-issue'),
   zone: $('#finding-zone'),
   note: $('#finding-note'),
+  disclaimerCheck: $('#finding-disclaimer'),
+  disclaimerText: $('#disclaimer-text'),
+  disclaimer: '', // wording that goes on this finding if the box is checked
   del: $('#finding-delete'),
   photo: null, // compressed Blob
   photoStamp: null, // { takenAt, lat, lon, accuracy, city }
@@ -745,14 +756,47 @@ $('#finding-form').addEventListener('submit', async (e) => {
 
 form.del.addEventListener('click', () => form.dialog.close('delete'));
 
+// ---------- Troubleshooting disclaimer ----------
+
+function setDisclaimer(text, checked = form.disclaimerCheck.checked) {
+  form.disclaimer = text;
+  form.disclaimerText.textContent = text;
+  form.disclaimerCheck.checked = checked;
+  $('#disclaimer-box').classList.toggle('on', checked);
+}
+
+form.disclaimerCheck.addEventListener('change', () => setDisclaimer(form.disclaimer));
+
+$('#disclaimer-edit').addEventListener('click', async () => {
+  const input = $('#disclaimer-input');
+  input.value = form.disclaimer;
+  $('#disclaimer-reset').onclick = () => (input.value = DEFAULT_DISCLAIMER);
+  if ((await showDialog($('#disclaimer-dialog'))) !== 'ok') return;
+  const text = input.value.trim();
+  if (!text) return;
+  await db.setSetting('disclaimer', text);
+  setDisclaimer(text, true); // editing it implies wanting it on this finding
+});
+
 async function fillIssues(selected) {
-  const issues = await loadIssues();
-  const options = [...issues];
-  // Keep an issue that has since been removed from the list, so editing doesn't lose it.
-  if (selected && !options.includes(selected)) options.unshift(selected);
+  const groups = await loadIssueGroups();
   const placeholder = new Option('Choose an issue', '');
   placeholder.disabled = true;
-  form.issue.replaceChildren(placeholder, ...options.map((o) => new Option(o, o)));
+  const options = [placeholder];
+  // Keep an issue that has since been removed from the list, so editing doesn't lose it.
+  if (selected && !groups.some((g) => g.issues.includes(selected))) options.push(new Option(selected, selected));
+  for (const g of groups) {
+    const items = g.issues.map((o) => new Option(o, o));
+    if (!g.name) {
+      options.push(...items);
+      continue;
+    }
+    const og = document.createElement('optgroup');
+    og.label = g.name;
+    og.append(...items);
+    options.push(og);
+  }
+  form.issue.replaceChildren(...options);
   form.issue.value = selected || '';
 }
 
@@ -767,6 +811,8 @@ async function openFindingForm(finding) {
   await fillIssues(finding ? finding.issue : '');
   form.zone.value = finding ? finding.zone : zoneOf(current.record);
   form.note.value = finding ? finding.note : '';
+  const saved = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+  setDisclaimer(finding && finding.disclaimer ? finding.disclaimer : saved, !!(finding && finding.disclaimer));
   form.dialog.scrollTop = 0;
   const result = await showDialog(form.dialog);
   const fields = {
@@ -775,6 +821,7 @@ async function openFindingForm(finding) {
     issue: form.issue.value,
     zone: form.zone.value.trim(),
     note: form.note.value.trim(),
+    disclaimer: form.disclaimerCheck.checked ? form.disclaimer : '',
   };
   setPhoto(null);
   return { result, fields };

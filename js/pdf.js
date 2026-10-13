@@ -209,6 +209,10 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
         lines.push({ gap: 6 });
         add('normal', 11, INK, f.note);
       }
+      if (f.disclaimer) {
+        lines.push({ gap: 4 });
+        add('italic', 10, MUTED, f.disclaimer);
+      }
       lines.push({ gap: 8 });
       add('bold', 9, MUTED, 'LOCATION');
       if (f.stamp && f.stamp.lat != null) {

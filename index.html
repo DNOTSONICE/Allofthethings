@@ -152,6 +152,15 @@
       <label class="label" for="finding-note">Note <span class="optional">(optional)</span></label>
       <textarea id="finding-note" class="field" rows="3" maxlength="2000"></textarea>
 
+      <div id="disclaimer-box" class="disclaimer-box">
+        <label class="check">
+          <input id="finding-disclaimer" type="checkbox">
+          <span>Add troubleshooting disclaimer</span>
+        </label>
+        <p id="disclaimer-text" class="disclaimer-text"></p>
+        <button id="disclaimer-edit" type="button" class="btn small outline">Edit disclaimer</button>
+      </div>
+
       <div class="label">Location</div>
       <div id="finding-location"></div>
       <p id="location-status" class="hint" hidden></p>
@@ -173,6 +182,19 @@
       <div class="actions">
         <button id="coords-copy" type="button" class="btn outline">Copy all</button>
         <button class="btn primary" value="cancel">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="disclaimer-dialog">
+    <form data-ok>
+      <h2>Troubleshooting disclaimer</h2>
+      <p class="hint">Saved for future findings. Findings that already have a disclaimer keep their wording unless you edit them.</p>
+      <textarea id="disclaimer-input" class="field" rows="4" maxlength="500" required></textarea>
+      <div class="actions">
+        <button id="disclaimer-reset" type="button" class="btn start">Reset</button>
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
       </div>
     </form>
   </dialog>
