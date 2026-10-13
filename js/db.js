@@ -2,7 +2,7 @@
 // Schema changes go in upgrade() with a bumped DB_VERSION so existing data is kept.
 
 const DB_NAME = 'wetcheck';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise = null;
 
@@ -16,6 +16,9 @@ function upgrade(db, oldVersion) {
     reports.createIndex('folderId', 'folderId');
     const findings = db.createObjectStore('findings', { keyPath: 'id' });
     findings.createIndex('reportId', 'reportId');
+  }
+  if (oldVersion < 3) {
+    db.createObjectStore('settings', { keyPath: 'key' });
   }
 }
 
@@ -90,6 +93,12 @@ export async function createFolder(name, parentId) {
 export async function renameFolder(id, name) {
   const folder = await getFolder(id);
   return put('folders', { ...folder, name, updatedAt: Date.now() });
+}
+
+// changes: e.g. { photo: Blob|null } for a property's cover photo.
+export async function updateFolder(id, changes) {
+  const folder = await getFolder(id);
+  return put('folders', { ...folder, ...changes, updatedAt: Date.now() });
 }
 
 // Ids of every folder nested under id (not including id itself).
@@ -206,4 +215,16 @@ export async function deleteFinding(id) {
   const tx = db.transaction('findings', 'readwrite');
   tx.objectStore('findings').delete(id);
   await txDone(tx);
+}
+
+// ---------- Settings ----------
+// App-wide values such as the company logo: { key, value }.
+
+export async function getSetting(key) {
+  const row = await get('settings', key);
+  return row ? row.value : null;
+}
+
+export async function setSetting(key, value) {
+  await put('settings', { key, value });
 }

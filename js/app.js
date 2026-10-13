@@ -1,11 +1,32 @@
 import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
-import { compressPhoto } from './photo.js';
+import { compressPhoto, compressLogo } from './photo.js';
 import { loadIssues } from './issues.js';
 import { buildReportPdf, pdfFileName } from './pdf.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+// Shown on the home screen so it's easy to tell which version a phone is running.
+// Keep in step with VERSION in sw.js.
+const APP_VERSION = 7;
+
+// ---------- Error banner ----------
+// Shows problems on screen instead of failing silently.
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.hidden = true), 8000);
+}
+window.addEventListener('error', (e) => showToast(`Something went wrong: ${e.message}`));
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  showToast(`Something went wrong: ${(r && r.message) || r}`);
+});
 
 const FOLDER_ICON = '<svg class="ico folder" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
 const REPORT_ICON = '<svg class="ico report" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1.5V9h4.5M8 13h8M8 16.5h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
@@ -84,8 +105,107 @@ async function renderFolder(id) {
   $('#folder-empty').innerHTML = here
     ? 'Nothing here yet. Tap <strong>New</strong> to add a wet check report or a folder.'
     : 'No properties yet. Tap <strong>New</strong> to add a folder for one.';
+  await renderCompanyCard(!here);
+  renderPropertyPhoto(path.length === 1 ? here : null);
+  $('#app-version').hidden = !!here;
+  $('#app-version').textContent = `App version ${APP_VERSION}`;
   showView('folder');
 }
+
+// ---------- Company logo (home screen) ----------
+
+let companyLogoUrl = null;
+
+async function renderCompanyCard(show) {
+  const card = $('#company-card');
+  card.hidden = !show;
+  if (!show) return;
+  const [logo, name] = await Promise.all([db.getSetting('companyLogo'), db.getSetting('companyName')]);
+  if (companyLogoUrl) URL.revokeObjectURL(companyLogoUrl);
+  companyLogoUrl = logo ? URL.createObjectURL(logo) : null;
+  const img = $('#company-card-img');
+  img.hidden = !logo;
+  if (logo) img.src = companyLogoUrl;
+  else img.removeAttribute('src');
+  $('#company-logo-box').classList.toggle('empty', !logo);
+  $('#company-card-name').textContent = name || (logo ? 'Company logo' : 'Add your company logo');
+}
+
+async function editCompany() {
+  let logo = await db.getSetting('companyLogo');
+  $('#company-name').value = (await db.getSetting('companyName')) || '';
+  const img = $('#logo-img');
+  let url = null;
+  const show = () => {
+    if (url) URL.revokeObjectURL(url);
+    url = logo ? URL.createObjectURL(logo) : null;
+    img.hidden = !logo;
+    if (logo) img.src = url;
+    $('#logo-empty').hidden = !!logo;
+    $('#logo-remove').hidden = !logo;
+  };
+  show();
+  $('#logo-error').hidden = true;
+  $('#logo-file').onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      logo = await compressLogo(file);
+      $('#logo-error').hidden = true;
+      show();
+    } catch {
+      $('#logo-error').textContent = 'That image couldn’t be read. Try another one.';
+      $('#logo-error').hidden = false;
+    }
+  };
+  $('#logo-remove').onclick = () => {
+    logo = null;
+    show();
+  };
+  const result = await showDialog($('#company-dialog'));
+  if (url) URL.revokeObjectURL(url);
+  if (result !== 'ok') return;
+  await db.setSetting('companyLogo', logo);
+  await db.setSetting('companyName', $('#company-name').value.trim());
+  render();
+}
+
+$('#company-card').addEventListener('click', editCompany);
+
+// ---------- Property photo (top-level folders) ----------
+
+let propertyPhotoUrl = null;
+
+function renderPropertyPhoto(folder) {
+  const box = $('#property-photo');
+  box.hidden = !folder;
+  if (!folder) return;
+  if (propertyPhotoUrl) URL.revokeObjectURL(propertyPhotoUrl);
+  propertyPhotoUrl = folder.photo ? URL.createObjectURL(folder.photo) : null;
+  const img = $('#property-photo-img');
+  img.hidden = !folder.photo;
+  if (folder.photo) img.src = propertyPhotoUrl;
+  else img.removeAttribute('src');
+  $('#prop-remove').hidden = !folder.photo;
+}
+
+async function onPropertyPhoto(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || current.kind !== 'folder' || !current.record) return;
+  const photo = await compressPhoto(file);
+  await db.updateFolder(current.record.id, { photo });
+  render();
+}
+
+$('#prop-remove').addEventListener('click', async () => {
+  if (!(await askConfirm('Remove property photo', 'Remove this property’s photo from its report covers?', 'Remove'))) return;
+  await db.updateFolder(current.record.id, { photo: null });
+  render();
+});
+$('#prop-camera').addEventListener('change', onPropertyPhoto);
+$('#prop-library').addEventListener('change', onPropertyPhoto);
 
 function row({ icon, name, detail, href, menuLabel, onMenu }) {
   const li = document.createElement('li');
@@ -431,9 +551,22 @@ async function exportPdf(report) {
   const closed = showDialog(dialog);
 
   try {
-    const [path, findings] = await Promise.all([db.getPath(report.folderId), db.listFindings(report.id)]);
+    const [path, findings, logo, companyName] = await Promise.all([
+      db.getPath(report.folderId),
+      db.listFindings(report.id),
+      db.getSetting('companyLogo'),
+      db.getSetting('companyName'),
+    ]);
     const property = path.map((f) => f.name);
-    const blob = await buildReportPdf({ report, property, groups: groupByZone(findings), zoneName });
+    const blob = await buildReportPdf({
+      report,
+      property,
+      propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
+      logo,
+      companyName,
+      groups: groupByZone(findings),
+      zoneName,
+    });
     const name = pdfFileName(property, report);
     const file = new File([blob], name, { type: 'application/pdf' });
 
@@ -709,6 +842,14 @@ window.addEventListener('hashchange', render);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
 if ('serviceWorker' in navigator) {
+  // When an update takes over, reload once so the page and its scripts are the same version.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
   navigator.serviceWorker.register('./sw.js');
 }
 

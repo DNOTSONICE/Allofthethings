@@ -10,7 +10,8 @@ Done so far:
 - Coordinates list for a report (report menu): every finding's coordinates, with Map, Copy and Copy all.
 - Zone-by-zone workflow: each report has a current zone (bottom bar, with next/previous buttons) that new findings go into, and findings are grouped by zone.
 
-- Export PDF (report screen): property, date, findings by zone with photo, issue, zone, note and location (links open the map), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
+- Company logo and name (home screen) and a property photo (top-level property folders) for the PDF cover page.
+- Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (links open the map), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
 
 ## Editing the issue list
 
@@ -26,4 +27,4 @@ python3 -m http.server 8000
 
 then open http://localhost:8000.
 
-When you change any app file, bump `VERSION` in `sw.js` so installed copies update.
+When you change any app file, bump `VERSION` in `sw.js` and `APP_VERSION` in `js/app.js` (shown on the home screen) so installed copies update.

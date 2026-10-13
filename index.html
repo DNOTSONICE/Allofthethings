@@ -30,10 +30,32 @@
 
   <main>
     <section id="folder-view" hidden>
+      <button id="company-card" class="company-card" hidden>
+        <span id="company-logo-box" class="company-logo-box"><img id="company-card-img" alt=""></span>
+        <span class="row-text">
+          <span id="company-card-name" class="row-name">Company logo</span>
+          <span class="row-detail">Shown on the cover of every report. Tap to change.</span>
+        </span>
+      </button>
+
+      <div id="property-photo" class="property-photo" hidden>
+        <img id="property-photo-img" alt="Property photo" hidden>
+        <div class="property-photo-body">
+          <div id="property-photo-label" class="property-photo-label">Property photo</div>
+          <div class="property-photo-hint">Shown on the cover of every report for this property.</div>
+          <div class="property-photo-actions">
+            <label class="btn small outline"><input id="prop-camera" type="file" accept="image/*" capture="environment" hidden>Take photo</label>
+            <label class="btn small outline"><input id="prop-library" type="file" accept="image/*" hidden>Choose photo</label>
+            <button id="prop-remove" type="button" class="btn small danger-text">Remove</button>
+          </div>
+        </div>
+      </div>
+
       <ul id="folder-list" class="list"></ul>
       <h2 id="reports-heading" class="section-title" hidden>Wet check reports</h2>
       <ul id="report-list" class="list"></ul>
       <p id="folder-empty" class="empty" hidden>Nothing here yet. Tap <strong>New</strong> to add a folder or a wet check report.</p>
+      <p id="app-version" class="version" hidden></p>
     </section>
 
     <section id="report-view" hidden>
@@ -153,6 +175,29 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="company-dialog">
+    <form data-ok>
+      <h2>Company</h2>
+      <div id="logo-preview" class="logo-preview"><img id="logo-img" alt="Company logo" hidden><span id="logo-empty">No logo yet</span></div>
+      <div class="photo-buttons">
+        <label class="btn outline">
+          <input id="logo-file" type="file" accept="image/*" hidden>
+          Choose logo
+        </label>
+        <button id="logo-remove" type="button" class="btn outline">Remove</button>
+      </div>
+      <p id="logo-error" class="error" hidden></p>
+      <label class="label" for="company-name">Company name <span class="optional">(optional)</span></label>
+      <input id="company-name" class="field" type="text" autocomplete="organization" maxlength="120">
+      <div class="actions">
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
 
   <dialog id="pdf-dialog">
     <form method="dialog">

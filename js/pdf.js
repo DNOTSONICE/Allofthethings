@@ -31,6 +31,9 @@ function blobToDataUrl(blob) {
   });
 }
 
+// jsPDF needs to be told the image format.
+const imageFormat = (blob) => (blob.type === 'image/png' ? 'PNG' : 'JPEG');
+
 async function imageSize(blob) {
   const bmp = await createImageBitmap(blob);
   const size = { w: bmp.width, h: bmp.height };
@@ -56,11 +59,13 @@ const LINE = [225, 230, 235];
 /**
  * report:   { name, date }
  * property: folder names from the top level down, e.g. ["Oak Ridge HOA", "North section"]
+ * propertyPhoto, logo: Blobs or null, for the cover page
+ * companyName: string or null
  * groups:   [[zone, findings], ...] in the order they should print
  * zoneName: zone -> "Zone 4" / "No zone"
  * Returns a Blob.
  */
-export async function buildReportPdf({ report, property, groups, zoneName }) {
+export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, groups, zoneName }) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ unit: 'pt', format: 'letter' });
   const propertyName = property.join(' / ') || 'Wet check';
@@ -81,32 +86,80 @@ export async function buildReportPdf({ report, property, groups, zoneName }) {
     if (y + h > PAGE_H - MARGIN - FOOTER) newPage();
   }
 
-  // ---------- Title block ----------
-  font('bold', 9);
-  color(ACCENT);
-  doc.text('WET CHECK REPORT', MARGIN, y + 9);
-  y += 18;
-
-  font('bold', 20);
-  color(INK);
-  for (const l of doc.splitTextToSize(propertyName, CONTENT_W)) {
-    doc.text(l, MARGIN, y + 18);
-    y += lineHeight(20);
-  }
-
   const total = groups.reduce((n, [, items]) => n + items.length, 0);
   const zones = groups.filter(([z]) => z).length;
-  font('normal', 11);
+
+  // ---------- Cover page ----------
+  font('bold', 10);
+  color(ACCENT);
+  doc.text('WET CHECK REPORT', MARGIN, y + 10);
+  y += 24;
+
+  font('bold', 26);
+  color(INK);
+  for (const l of doc.splitTextToSize(propertyName, CONTENT_W)) {
+    doc.text(l, MARGIN, y + 26);
+    y += lineHeight(26);
+  }
+  y += 2;
+  font('normal', 13);
   color(MUTED);
-  const summary = `${report.name}  ·  ${formatDate(report.date)}  ·  ${total} finding${total === 1 ? '' : 's'}`
-    + (zones ? ` in ${zones} zone${zones === 1 ? '' : 's'}` : '');
-  doc.text(summary, MARGIN, y + 11);
-  y += 22;
+  doc.text(`${report.name}  ·  ${formatDate(report.date)}`, MARGIN, y + 13);
+  y += 26;
+
+  // Logo area at the bottom of the cover, measured first so the photo can fill what's left.
+  const LOGO_MAX_W = 220;
+  const LOGO_MAX_H = 90;
+  let logoImg = null;
+  if (logo) {
+    const { w, h } = await imageSize(logo);
+    const scale = Math.min(LOGO_MAX_W / w, LOGO_MAX_H / h);
+    logoImg = { data: await blobToDataUrl(logo), w: w * scale, h: h * scale, format: imageFormat(logo) };
+  }
+  const companyH = (logoImg ? logoImg.h + 10 : 0) + (companyName ? 18 : 0);
+  const companyTop = PAGE_H - MARGIN - companyH - (logoImg || companyName ? 14 : 0);
+
+  // Summary line under the photo.
+  const summary = `${total} finding${total === 1 ? '' : 's'}` + (zones ? ` in ${zones} zone${zones === 1 ? '' : 's'}` : '');
+  const summaryH = 34;
+
+  if (propertyPhoto) {
+    const { w, h } = await imageSize(propertyPhoto);
+    const maxH = companyTop - y - summaryH - 24;
+    const scale = Math.min(CONTENT_W / w, maxH / h);
+    const pw = w * scale;
+    const ph = h * scale;
+    doc.addImage(await blobToDataUrl(propertyPhoto), imageFormat(propertyPhoto), MARGIN + (CONTENT_W - pw) / 2, y, pw, ph);
+    y += ph + 18;
+  }
 
   doc.setDrawColor(...LINE);
   doc.setLineWidth(1);
   doc.line(MARGIN, y, PAGE_W - MARGIN, y);
-  y += 16;
+  y += 20;
+  font('bold', 14);
+  color(INK);
+  doc.text(summary, MARGIN, y);
+
+  if (logoImg || companyName) {
+    let cy = companyTop;
+    font('bold', 8);
+    color(MUTED);
+    doc.text('PREPARED BY', PAGE_W / 2, cy, { align: 'center' });
+    cy += 10;
+    if (logoImg) {
+      doc.addImage(logoImg.data, logoImg.format, (PAGE_W - logoImg.w) / 2, cy, logoImg.w, logoImg.h, undefined, 'FAST'); // PNGs are stored uncompressed otherwise
+      cy += logoImg.h + 10;
+    }
+    if (companyName) {
+      font('bold', 12);
+      color(INK);
+      doc.text(companyName, PAGE_W / 2, cy + 12, { align: 'center' });
+    }
+  }
+
+  // Findings start on page 2.
+  newPage();
 
   if (!total) {
     font('normal', 12);
@@ -236,7 +289,7 @@ export async function buildReportPdf({ report, property, groups, zoneName }) {
 
   // ---------- Footer on every page ----------
   const pages = doc.getNumberOfPages();
-  for (let p = 1; p <= pages; p++) {
+  for (let p = 2; p <= pages; p++) { // no footer on the cover
     doc.setPage(p);
     font('normal', 8);
     color(MUTED);
