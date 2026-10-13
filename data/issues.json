@@ -1,0 +1,28 @@
+{
+  "_help": "The choices in the Issue dropdown, in this order. Add, remove or rename lines, keeping the quotes and commas. Old findings keep their issue even if it's removed here.",
+  "issues": [
+    "Broken head",
+    "Broken riser",
+    "Clogged nozzle",
+    "Misaligned head",
+    "Head sunken or low",
+    "Head tilted",
+    "Wrong or mismatched nozzle",
+    "Overspray onto hardscape",
+    "Blocked by plants or obstruction",
+    "Coverage gap or dry spot",
+    "Low pressure",
+    "High pressure or misting",
+    "Lateral line leak",
+    "Mainline leak",
+    "Valve leaking or weeping",
+    "Valve not opening",
+    "Valve not closing",
+    "Drip line damaged",
+    "Drip emitter clogged or missing",
+    "Controller issue",
+    "Rain or weather sensor issue",
+    "Backflow issue",
+    "Other"
+  ]
+}

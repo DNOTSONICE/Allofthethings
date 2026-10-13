@@ -8,6 +8,7 @@
   --line: #e1e6eb;
   --danger: #c62828;
   --folder: #f2b33d;
+  --report: #0e7490;
   color-scheme: light dark;
 }
 
@@ -20,6 +21,7 @@
     --muted: #93a1ad;
     --line: #26313a;
     --danger: #ef6b6b;
+    --report: #5cc4dd;
   }
 }
 
@@ -72,6 +74,11 @@ button { font: inherit; color: inherit; }
 }
 .crumbs a { color: inherit; }
 
+.subtitle { font-size: 0.85rem; opacity: 0.85; }
+
+.bar-text { flex: 1; }
+.icon-btn.end { margin-left: 0; margin-right: -8px; }
+
 .icon-btn {
   flex: none;
   width: 40px;
@@ -119,16 +126,33 @@ main {
   border: 0;
   background: transparent;
   text-align: left;
+  color: inherit;
+  text-decoration: none;
 }
 .row-open:active, .row-more:active { background: var(--line); }
 
-.ico { flex: none; width: 28px; height: 28px; fill: var(--folder); }
+.ico { flex: none; width: 28px; height: 28px; }
+.ico.folder { fill: var(--folder); }
+.ico.report { color: var(--report); }
 
-.row-name {
+.row-text { min-width: 0; display: flex; flex-direction: column; }
+
+.row-name, .row-detail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.row-detail { font-size: 0.85rem; color: var(--muted); }
+
+.section-title {
+  margin: 22px 4px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.list + .list { margin-top: 12px; }
 
 .row-more {
   flex: none;
@@ -178,7 +202,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 dialog h2 { margin: 0 0 14px; font-size: 1.15rem; }
 dialog p { margin: 0 0 16px; color: var(--muted); }
 
-#name-input {
+.field {
+  display: block;
   width: 100%;
   padding: 12px;
   font: inherit;
@@ -188,7 +213,16 @@ dialog p { margin: 0 0 16px; color: var(--muted); }
   background: var(--bg);
   color: var(--text);
 }
-#name-input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.field:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+textarea.field { resize: vertical; min-height: 4.5em; }
+select.field { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
+
+.label { display: block; margin: 14px 0 6px; font-size: 0.9rem; font-weight: 600; }
+h2 + .label { margin-top: 0; }
+.photo-buttons + .error + .label { margin-top: 18px; }
+.optional { font-weight: 400; color: var(--muted); }
+.error { color: var(--danger); margin: 8px 0 0; font-size: 0.9rem; }
 
 .actions {
   display: flex;
@@ -207,6 +241,52 @@ dialog p { margin: 0 0 16px; color: var(--muted); }
 }
 .btn.primary { background: var(--accent); color: var(--accent-ink); }
 .btn.danger { background: var(--danger); color: #fff; }
+.btn.danger-text { color: var(--danger); }
+.btn.outline { flex: 1; text-align: center; border: 1.5px solid var(--accent); padding: 11px 12px; }
+.btn.start { margin-right: auto; padding-left: 4px; }
+
+/* Full-screen form on phones */
+dialog.full {
+  width: 100%;
+  max-width: 560px;
+  max-height: 100dvh;
+  height: 100dvh;
+  margin: 0 auto;
+  border-radius: 0;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
+  overflow-y: auto;
+}
+@media (min-width: 600px) {
+  dialog.full { height: auto; max-height: 92dvh; margin: auto; border-radius: 16px; }
+}
+
+.photo-preview {
+  margin-bottom: 10px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.photo-preview img { display: block; width: 100%; max-height: 45vh; object-fit: contain; }
+.photo-buttons { display: flex; gap: 10px; }
+
+/* Findings */
+.cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.card {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  text-align: left;
+}
+.card:active { filter: brightness(0.96); }
+.card-photo { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--line); }
+.card-body { padding: 12px 14px 14px; }
+.card-issue { font-weight: 600; }
+.card-zone { margin-top: 2px; font-size: 0.9rem; color: var(--muted); }
+.card-note { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .sheet {
   margin: auto auto 0;

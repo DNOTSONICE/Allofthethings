@@ -2,9 +2,16 @@
 
 A mobile-first installable web app (PWA) for irrigation wet checks. Everything is stored on the device in IndexedDB, so it works offline.
 
-Stage 1 (current): folder manager for properties. Create, rename, delete and nest folders.
+Done so far:
+- Folder manager for properties: create, rename, delete and nest folders.
+- Wet check reports inside folders, each with a name and date.
+- Findings in a report: a photo (camera or library, compressed to 1600px JPEG on save), an issue, an optional zone and an optional note.
 
-Coming next: wet check reports inside folders, findings with photos, and PDF export.
+Coming next: PDF export.
+
+## Editing the issue list
+
+The Issue dropdown comes from `data/issues.json`. Edit the `issues` list there (keep the quotes and commas). Findings that used an issue you remove keep it.
 
 ## Run locally
 

@@ -2,7 +2,7 @@
 // Schema changes go in upgrade() with a bumped DB_VERSION so existing data is kept.
 
 const DB_NAME = 'wetcheck';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -11,7 +11,12 @@ function upgrade(db, oldVersion) {
     const folders = db.createObjectStore('folders', { keyPath: 'id' });
     folders.createIndex('parentId', 'parentId');
   }
-  // Future: reports (indexed by folderId) and findings (indexed by reportId).
+  if (oldVersion < 2) {
+    const reports = db.createObjectStore('reports', { keyPath: 'id' });
+    reports.createIndex('folderId', 'folderId');
+    const findings = db.createObjectStore('findings', { keyPath: 'id' });
+    findings.createIndex('reportId', 'reportId');
+  }
 }
 
 function openDb() {
@@ -46,41 +51,45 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+
+async function get(store, id) {
+  const db = await openDb();
+  return promisify(db.transaction(store).objectStore(store).get(id));
+}
+
+async function getAllBy(store, index, key) {
+  const db = await openDb();
+  return promisify(db.transaction(store).objectStore(store).index(index).getAll(key));
+}
+
+async function put(store, record) {
+  const db = await openDb();
+  const tx = db.transaction(store, 'readwrite');
+  tx.objectStore(store).put(record);
+  await txDone(tx);
+  return record;
+}
+
+// ---------- Folders ----------
+
 // Root-level folders use parentId "root" because IndexedDB can't index null.
 export const ROOT = 'root';
 
-export async function getFolder(id) {
-  const db = await openDb();
-  return promisify(db.transaction('folders').objectStore('folders').get(id));
-}
+export const getFolder = (id) => get('folders', id);
 
 export async function listChildren(parentId) {
-  const db = await openDb();
-  const store = db.transaction('folders').objectStore('folders');
-  const items = await promisify(store.index('parentId').getAll(parentId));
-  return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  return (await getAllBy('folders', 'parentId', parentId)).sort(byName);
 }
 
 export async function createFolder(name, parentId) {
-  const db = await openDb();
   const now = Date.now();
-  const folder = { id: newId(), name, parentId, createdAt: now, updatedAt: now };
-  const tx = db.transaction('folders', 'readwrite');
-  tx.objectStore('folders').add(folder);
-  await txDone(tx);
-  return folder;
+  return put('folders', { id: newId(), name, parentId, createdAt: now, updatedAt: now });
 }
 
 export async function renameFolder(id, name) {
-  const db = await openDb();
-  const tx = db.transaction('folders', 'readwrite');
-  const store = tx.objectStore('folders');
-  const folder = await promisify(store.get(id));
-  folder.name = name;
-  folder.updatedAt = Date.now();
-  store.put(folder);
-  await txDone(tx);
-  return folder;
+  const folder = await getFolder(id);
+  return put('folders', { ...folder, name, updatedAt: Date.now() });
 }
 
 // Ids of every folder nested under id (not including id itself).
@@ -97,18 +106,33 @@ export async function listDescendantIds(id) {
   return out;
 }
 
+// Everything a folder delete would remove: nested folders, reports and their findings.
+async function folderContents(id) {
+  const folderIds = [id, ...(await listDescendantIds(id))];
+  const reportIds = [];
+  for (const fid of folderIds) {
+    for (const r of await getAllBy('reports', 'folderId', fid)) reportIds.push(r.id);
+  }
+  const findingIds = [];
+  for (const rid of reportIds) {
+    for (const f of await getAllBy('findings', 'reportId', rid)) findingIds.push(f.id);
+  }
+  return { folderIds, reportIds, findingIds };
+}
+
 // Counts what a delete would remove, for the confirmation message.
 export async function countContents(id) {
-  const ids = await listDescendantIds(id);
-  return { folders: ids.length };
+  const c = await folderContents(id);
+  return { folders: c.folderIds.length - 1, reports: c.reportIds.length };
 }
 
 export async function deleteFolder(id) {
-  const ids = [id, ...(await listDescendantIds(id))];
+  const c = await folderContents(id);
   const db = await openDb();
-  const tx = db.transaction('folders', 'readwrite');
-  const store = tx.objectStore('folders');
-  for (const fid of ids) store.delete(fid);
+  const tx = db.transaction(['folders', 'reports', 'findings'], 'readwrite');
+  for (const x of c.folderIds) tx.objectStore('folders').delete(x);
+  for (const x of c.reportIds) tx.objectStore('reports').delete(x);
+  for (const x of c.findingIds) tx.objectStore('findings').delete(x);
   await txDone(tx);
 }
 
@@ -123,4 +147,63 @@ export async function getPath(id) {
     cur = f.parentId;
   }
   return path;
+}
+
+// ---------- Reports ----------
+
+export const getReport = (id) => get('reports', id);
+
+// Newest wet check first.
+export async function listReports(folderId) {
+  const items = await getAllBy('reports', 'folderId', folderId);
+  return items.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+}
+
+export async function createReport(folderId, name, date) {
+  const now = Date.now();
+  return put('reports', { id: newId(), folderId, name, date, createdAt: now, updatedAt: now });
+}
+
+export async function updateReport(id, changes) {
+  const report = await getReport(id);
+  return put('reports', { ...report, ...changes, updatedAt: Date.now() });
+}
+
+export async function deleteReport(id) {
+  const findings = await getAllBy('findings', 'reportId', id);
+  const db = await openDb();
+  const tx = db.transaction(['reports', 'findings'], 'readwrite');
+  tx.objectStore('reports').delete(id);
+  for (const f of findings) tx.objectStore('findings').delete(f.id);
+  await txDone(tx);
+}
+
+// ---------- Findings ----------
+
+export const getFinding = (id) => get('findings', id);
+
+// In the order they were added.
+export async function listFindings(reportId) {
+  const items = await getAllBy('findings', 'reportId', reportId);
+  return items.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+// fields: { photo: Blob|null, issue, zone, note }
+export async function saveFinding(reportId, fields, id = null) {
+  const now = Date.now();
+  const existing = id ? await getFinding(id) : null;
+  return put('findings', {
+    id: id || newId(),
+    reportId,
+    createdAt: existing ? existing.createdAt : now,
+    ...fields,
+    updatedAt: now,
+  });
+}
+
+export async function deleteFinding(id) {
+  const db = await openDb();
+  const tx = db.transaction('findings', 'readwrite');
+  tx.objectStore('findings').delete(id);
+  await txDone(tx);
 }
