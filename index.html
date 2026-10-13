@@ -72,26 +72,27 @@
       <div id="finding-groups"></div>
       <p id="report-empty" class="empty" hidden>No findings yet. Set the zone you're starting in below, then tap <strong>Add finding</strong>.</p>
 
-      <div class="zone-panel">
-        <div class="zone-row">
-          <button id="zone-prev" class="zone-step" aria-label="Previous zone">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <button id="zone-current" class="zone-current" aria-label="Change current zone">
-            <span class="zone-caption">Working in</span>
-            <span id="zone-value" class="zone-value">Zone 1</span>
-          </button>
-          <button id="zone-next" class="zone-step" aria-label="Next zone">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
-        <button id="add-finding" class="btn primary add-finding">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-          <span id="add-finding-label">Add finding to Zone 1</span>
-        </button>
-      </div>
     </section>
   </main>
+
+  <div class="zone-panel">
+    <div class="zone-row">
+      <button id="zone-prev" class="zone-step" aria-label="Previous zone">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="zone-current" class="zone-current" aria-label="Change current zone">
+        <span class="zone-caption">Working in</span>
+        <span id="zone-value" class="zone-value">Zone 1</span>
+      </button>
+      <button id="zone-next" class="zone-step" aria-label="Next zone">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <button id="add-finding" class="btn primary add-finding">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <span id="add-finding-label">Add finding to Zone 1</span>
+    </button>
+  </div>
 
   <button id="fab" class="fab">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>

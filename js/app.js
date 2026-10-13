@@ -9,7 +9,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 
 // ---------- Error banner ----------
 // Shows problems on screen instead of failing silently.
@@ -56,7 +56,7 @@ async function render() {
   else await renderFolder(r.id);
   // Start at the top when moving to a different screen, but not when refreshing the same one.
   const screen = `${r.kind}:${r.id}`;
-  if (screen !== lastScreen) window.scrollTo(0, 0);
+  if (screen !== lastScreen) $('main').scrollTo(0, 0);
   lastScreen = screen;
 }
 

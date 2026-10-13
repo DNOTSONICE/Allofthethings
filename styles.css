@@ -31,19 +31,25 @@
 
 html, body { margin: 0; }
 
+/* App shell: header and zone bar stay put, only <main> scrolls. The page itself never
+   scrolls, so phone browsers can't drag the bars around when the toolbar hides or bounces. */
+html, body { height: 100%; overflow: hidden; }
+
 body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  min-height: 100dvh;
   -webkit-tap-highlight-color: transparent;
 }
 
 button { font: inherit; color: inherit; }
 
 .bar {
-  position: sticky;
-  top: 0;
+  flex: none;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -94,9 +100,12 @@ button { font: inherit; color: inherit; }
 .icon-btn:active { background: rgb(255 255 255 / 0.18); }
 
 main {
-  padding: 12px 12px calc(env(safe-area-inset-bottom) + 96px);
-  max-width: 720px;
-  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px max(12px, calc((100% - 720px) / 2)) calc(env(safe-area-inset-bottom) + 96px);
 }
 
 .list {
@@ -321,13 +330,11 @@ dialog.full {
 .sheet-item.danger { color: var(--danger); }
 
 /* Zone controls at the bottom of a report */
-body.in-report main { padding-bottom: calc(env(safe-area-inset-bottom) + 150px); }
+body.in-report main { padding-bottom: 24px; }
+body:not(.in-report) .zone-panel { display: none; }
 
 .zone-panel {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex: none;
   z-index: 1;
   padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px);
   background: var(--surface);
