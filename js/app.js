@@ -194,6 +194,23 @@ async function newInFolder() {
 
 let photoUrls = []; // object URLs for thumbnails, revoked on each render
 
+// The zone a report is being worked in. New findings go into it unless changed.
+const zoneOf = (report) => (report.currentZone ?? '1');
+const zoneName = (z) => (z ? `Zone ${z}` : 'No zone');
+
+// Next or previous zone: steps the number at the end ("4" -> "5", "A3" -> "A4").
+function stepZone(zone, delta) {
+  const m = zone.match(/^(.*?)(\d+)$/);
+  if (!m) return zone ? zone : '1';
+  return m[1] + Math.max(1, Number(m[2]) + delta);
+}
+
+const byZone = (a, b) => {
+  if (!a) return 1; // findings with no zone go last
+  if (!b) return -1;
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+};
+
 async function renderReport(id) {
   const report = await db.getReport(id);
   if (!report) return (location.hash = '#/');
@@ -207,18 +224,56 @@ async function renderReport(id) {
     back: true,
     more: true,
   });
-  $('#fab-label').textContent = 'Add finding';
+
+  const zone = zoneOf(report);
+  $('#zone-value').textContent = zoneName(zone);
+  $('#add-finding-label').textContent = zone ? `Add finding to Zone ${zone}` : 'Add finding';
+  $('#zone-prev').disabled = !/\d+$/.test(zone) || /^(.*?\D)?0*1$/.test(zone);
 
   const findings = await db.listFindings(id);
   for (const u of photoUrls) URL.revokeObjectURL(u);
   photoUrls = [];
-  $('#finding-list').replaceChildren(...findings.map((f, i) => findingCard(f, i + 1)));
+
+  // One section per zone, in zone order; findings keep the order they were added.
+  const groups = new Map();
+  for (const f of findings) {
+    const z = f.zone || '';
+    if (!groups.has(z)) groups.set(z, []);
+    groups.get(z).push(f);
+  }
+  const sections = [...groups.keys()].sort(byZone).map((z) => {
+    const section = document.createElement('section');
+    section.className = 'zone-group' + (z === zone ? ' current' : '');
+    const h = document.createElement('h2');
+    h.className = 'section-title';
+    h.textContent = `${zoneName(z)} · ${plural(groups.get(z).length, 'finding')}`;
+    const ul = document.createElement('ul');
+    ul.className = 'cards';
+    ul.append(...groups.get(z).map((f, i) => findingCard(f, i + 1)));
+    section.append(h, ul);
+    return section;
+  });
+  $('#finding-groups').replaceChildren(...sections);
   $('#report-empty').hidden = findings.length > 0;
   showView('report');
 }
 
+async function setZone(zone) {
+  const report = await db.updateReport(current.id, { currentZone: zone });
+  current.record = report;
+  await render();
+}
+
+$('#zone-next').addEventListener('click', () => setZone(stepZone(zoneOf(current.record), 1)));
+$('#zone-prev').addEventListener('click', () => setZone(stepZone(zoneOf(current.record), -1)));
+$('#zone-current').addEventListener('click', async () => {
+  const z = await askName('Current zone', 'Set', zoneOf(current.record), { allowEmpty: true, placeholder: 'Zone number', numeric: true });
+  if (z !== null) setZone(z);
+});
+
 function findingCard(finding, number) {
   const li = document.createElement('li');
+  li.dataset.id = finding.id;
   const btn = document.createElement('button');
   btn.className = 'card';
   btn.addEventListener('click', () => editFinding(finding));
@@ -238,12 +293,6 @@ function findingCard(finding, number) {
   head.className = 'card-issue';
   head.textContent = `${number}. ${finding.issue}`;
   body.append(head);
-  if (finding.zone) {
-    const z = document.createElement('div');
-    z.className = 'card-zone';
-    z.textContent = `Zone ${finding.zone}`;
-    body.append(z);
-  }
   if (finding.note) {
     const n = document.createElement('div');
     n.className = 'card-note';
@@ -360,7 +409,7 @@ async function openFindingForm(finding) {
   showPhotoError('');
   setPhoto(finding ? finding.photo : null);
   await fillIssues(finding ? finding.issue : '');
-  form.zone.value = finding ? finding.zone : '';
+  form.zone.value = finding ? finding.zone : zoneOf(current.record);
   form.note.value = finding ? finding.note : '';
   form.dialog.scrollTop = 0;
   const result = await showDialog(form.dialog);
@@ -372,9 +421,11 @@ async function openFindingForm(finding) {
 async function addFinding() {
   const { result, fields } = await openFindingForm(null);
   if (result !== 'ok') return;
-  await db.saveFinding(current.id, fields);
+  const saved = await db.saveFinding(current.id, fields);
   await render();
-  window.scrollTo(0, document.body.scrollHeight); // show the finding just added
+  // Show the finding just added.
+  const card = document.querySelector(`[data-id="${saved.id}"]`);
+  if (card) card.scrollIntoView({ block: 'center' });
 }
 
 async function editFinding(finding) {
@@ -395,6 +446,8 @@ async function editFinding(finding) {
 function showView(kind) {
   $('#folder-view').hidden = kind !== 'folder';
   $('#report-view').hidden = kind !== 'report';
+  $('#fab').hidden = kind !== 'folder';
+  document.body.classList.toggle('in-report', kind === 'report');
 }
 
 // Screens visited in this session, so the on-screen back arrow can step back through
@@ -416,7 +469,8 @@ $('#back').addEventListener('click', () => {
 
 $('#header-more').addEventListener('click', () => current.kind === 'report' && reportMenu(current.record));
 
-$('#fab').addEventListener('click', () => (current.kind === 'report' ? addFinding() : newInFolder()));
+$('#fab').addEventListener('click', newInFolder);
+$('#add-finding').addEventListener('click', addFinding);
 
 window.addEventListener('hashchange', render);
 

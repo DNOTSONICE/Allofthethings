@@ -5,7 +5,8 @@ A mobile-first installable web app (PWA) for irrigation wet checks. Everything i
 Done so far:
 - Folder manager for properties: create, rename, delete and nest folders.
 - Wet check reports inside folders, each with a name and date.
-- Findings in a report: a photo (camera or library, compressed to 1600px JPEG on save), an issue, an optional zone and an optional note.
+- Findings in a report: a photo (camera or library, compressed to 1600px JPEG on save), an issue, a zone and an optional note.
+- Zone-by-zone workflow: each report has a current zone (bottom bar, with next/previous buttons) that new findings go into, and findings are grouped by zone.
 
 Coming next: PDF export.
 

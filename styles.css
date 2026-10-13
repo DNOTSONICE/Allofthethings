@@ -316,3 +316,64 @@ dialog.full {
 }
 .sheet-item:active { background: var(--line); }
 .sheet-item.danger { color: var(--danger); }
+
+/* Zone controls at the bottom of a report */
+body.in-report main { padding-bottom: calc(env(safe-area-inset-bottom) + 150px); }
+
+.zone-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 14px rgb(0 0 0 / 0.08);
+}
+.zone-row, .add-finding { max-width: 560px; margin: 0 auto; }
+.zone-row { display: flex; align-items: center; gap: 8px; }
+.zone-step {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+.zone-step svg { width: 26px; height: 26px; }
+.zone-step:disabled { color: var(--line); }
+.zone-step:active:not(:disabled) { background: var(--line); }
+.zone-current {
+  flex: 1;
+  min-width: 0;
+  height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.zone-current:active { background: var(--line); }
+.zone-caption { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.zone-value { font-size: 1.35rem; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.add-finding {
+  display: flex;
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 1.05rem;
+}
+.add-finding svg { width: 22px; height: 22px; }
+
+.zone-group .section-title { margin-top: 18px; }
+.zone-group:first-child .section-title { margin-top: 4px; }
+.zone-group.current .section-title { color: var(--accent); }

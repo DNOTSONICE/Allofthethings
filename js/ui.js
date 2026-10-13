@@ -11,18 +11,23 @@ export function showDialog(dialog) {
   });
 }
 
-// Shows the name dialog and resolves with the trimmed name, or null if cancelled.
-export async function askName(title, submitLabel, initial = '') {
+// Shows the name dialog and resolves with the trimmed text, or null if cancelled.
+// With allowEmpty, an empty answer resolves as '' instead of being refused.
+export async function askName(title, submitLabel, initial = '', { allowEmpty = false, placeholder = 'Folder name', numeric = false } = {}) {
   const input = $('#name-input');
   $('#name-title').textContent = title;
   $('#name-submit').textContent = submitLabel;
   input.value = initial;
+  input.placeholder = placeholder;
+  input.required = !allowEmpty;
+  input.inputMode = numeric ? 'numeric' : 'text';
   const result = showDialog($('#name-dialog'));
   input.focus();
   input.select();
   const ok = (await result) === 'ok';
   const v = input.value.trim();
-  return ok && v ? v : null;
+  if (!ok) return null;
+  return v || allowEmpty ? v : null;
 }
 
 // actions: [{ label, value, danger? }]. Resolves with the chosen value, or '' if cancelled.
