@@ -2,6 +2,7 @@ import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto } from './photo.js';
 import { loadIssues } from './issues.js';
+import { getPosition, readExif, lookupCity, stampLines } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -256,7 +257,30 @@ async function renderReport(id) {
   $('#finding-groups').replaceChildren(...sections);
   $('#report-empty').hidden = findings.length > 0;
   showView('report');
+  fillMissingCities(findings);
 }
+
+// Photos taken offline get their city once there's a connection.
+let fillingCities = false;
+async function fillMissingCities(findings) {
+  if (fillingCities || !navigator.onLine) return;
+  const todo = findings.filter((f) => f.stamp && f.stamp.lat != null && !f.stamp.city);
+  if (!todo.length) return;
+  fillingCities = true;
+  let changed = false;
+  for (const f of todo) {
+    const city = await lookupCity(f.stamp.lat, f.stamp.lon);
+    if (!city) continue;
+    const latest = await db.getFinding(f.id);
+    if (!latest || !latest.stamp) continue;
+    await db.saveFinding(latest.reportId, { ...latest, stamp: { ...latest.stamp, city } }, latest.id);
+    changed = true;
+  }
+  fillingCities = false;
+  if (changed && current.kind === 'report') render();
+}
+
+window.addEventListener('online', () => current && current.kind === 'report' && render());
 
 async function setZone(zone) {
   const report = await db.updateReport(current.id, { currentZone: zone });
@@ -279,13 +303,19 @@ function findingCard(finding, number) {
   btn.addEventListener('click', () => editFinding(finding));
 
   if (finding.photo) {
+    const wrap = document.createElement('div');
+    wrap.className = 'photo-wrap';
     const img = document.createElement('img');
     const url = URL.createObjectURL(finding.photo);
     photoUrls.push(url);
     img.src = url;
     img.alt = '';
     img.className = 'card-photo';
-    btn.append(img);
+    const stamp = document.createElement('div');
+    stamp.className = 'stamp';
+    renderStamp(stamp, finding.stamp);
+    wrap.append(img, stamp);
+    btn.append(wrap);
   }
   const body = document.createElement('div');
   body.className = 'card-body';
@@ -340,21 +370,44 @@ const form = {
   title: $('#finding-title'),
   preview: $('#photo-preview'),
   img: $('#photo-img'),
+  stamp: $('#photo-stamp'),
+  locStatus: $('#location-status'),
   error: $('#photo-error'),
   issue: $('#finding-issue'),
   zone: $('#finding-zone'),
   note: $('#finding-note'),
   del: $('#finding-delete'),
   photo: null, // compressed Blob
+  photoStamp: null, // { takenAt, lat, lon, accuracy, city }
   busy: false,
+  locating: null, // promise while waiting on GPS for the current photo
+  pendingPosition: null, // GPS request started when the camera opens
+  pick: 0, // bumps on every photo pick so a slow lookup can't overwrite a newer photo
 };
 
-function setPhoto(blob) {
+function setPhoto(blob, stamp = null) {
   form.photo = blob;
   if (form.img.src) URL.revokeObjectURL(form.img.src);
   form.img.removeAttribute('src');
   if (blob) form.img.src = URL.createObjectURL(blob);
   form.preview.hidden = !blob;
+  setStamp(stamp);
+}
+
+function setStamp(stamp) {
+  form.photoStamp = stamp;
+  renderStamp(form.stamp, stamp);
+}
+
+function renderStamp(el, stamp) {
+  const lines = stampLines(stamp);
+  el.replaceChildren(...lines.map((l) => Object.assign(document.createElement('div'), { textContent: l })));
+  el.hidden = lines.length === 0;
+}
+
+function showLocStatus(msg) {
+  form.locStatus.textContent = msg;
+  form.locStatus.hidden = !msg;
 }
 
 function showPhotoError(msg) {
@@ -362,30 +415,74 @@ function showPhotoError(msg) {
   form.error.hidden = !msg;
 }
 
-async function onPhotoPicked(e) {
+async function onPhotoPicked(e, fromCamera) {
   const file = e.target.files[0];
   e.target.value = ''; // lets the same photo be picked again
   if (!file) return;
+  const pick = ++form.pick;
   showPhotoError('');
+  showLocStatus('');
   form.busy = true;
+  let exif;
   try {
-    setPhoto(await compressPhoto(file));
+    [exif] = await Promise.all([readExif(file), compressPhoto(file).then((b) => (form.photo = b))]);
   } catch {
-    showPhotoError('That photo couldn’t be read. Try another one.');
-  } finally {
     form.busy = false;
+    showPhotoError('That photo couldn’t be read. Try another one.');
+    return;
+  }
+  form.busy = false;
+  if (pick !== form.pick) return;
+
+  // Camera: now, and the phone's GPS unless the camera already tagged the photo.
+  // Library: whatever the photo itself recorded, since it may be from another day or place.
+  const stamp = { takenAt: exif.takenAt || (fromCamera ? Date.now() : file.lastModified || null) };
+  if (exif.lat != null) Object.assign(stamp, { lat: exif.lat, lon: exif.lon });
+  setPhoto(form.photo, stamp);
+
+  if (stamp.lat == null && fromCamera) {
+    showLocStatus('Getting location…');
+    form.locating = (form.pendingPosition || getPosition()).then((pos) => {
+      if (pick !== form.pick) return;
+      form.locating = null;
+      if (pos) {
+        setStamp({ ...form.photoStamp, ...pos });
+        showLocStatus('');
+      } else {
+        showLocStatus('Location unavailable. Allow location for this site in your phone’s settings to add it.');
+      }
+    });
+    await form.locating;
+  } else if (stamp.lat == null) {
+    showLocStatus('This photo has no location saved in it.');
+  }
+  form.pendingPosition = null;
+
+  const s = form.photoStamp;
+  if (pick === form.pick && s && s.lat != null) {
+    const city = await lookupCity(s.lat, s.lon);
+    if (city && pick === form.pick) setStamp({ ...form.photoStamp, city });
   }
 }
 
-$('#photo-camera').addEventListener('change', onPhotoPicked);
-$('#photo-library').addEventListener('change', onPhotoPicked);
+// Start GPS as the camera opens, so it's ready by the time the photo is taken.
+$('#photo-camera').addEventListener('click', () => {
+  form.pendingPosition = getPosition();
+});
+$('#photo-camera').addEventListener('change', (e) => onPhotoPicked(e, true));
+$('#photo-library').addEventListener('change', (e) => onPhotoPicked(e, false));
 
-$('#finding-form').addEventListener('submit', (e) => {
+$('#finding-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (form.busy) return;
   if (!form.photo) {
     showPhotoError('Add a photo first.');
     return;
+  }
+  if (form.locating) {
+    $('#finding-save').disabled = true;
+    await form.locating;
+    $('#finding-save').disabled = false;
   }
   form.dialog.close('ok');
 });
@@ -407,13 +504,22 @@ async function openFindingForm(finding) {
   form.title.textContent = finding ? 'Edit finding' : 'New finding';
   form.del.hidden = !finding;
   showPhotoError('');
-  setPhoto(finding ? finding.photo : null);
+  showLocStatus('');
+  form.pick++;
+  form.locating = null;
+  setPhoto(finding ? finding.photo : null, finding ? finding.stamp || null : null);
   await fillIssues(finding ? finding.issue : '');
   form.zone.value = finding ? finding.zone : zoneOf(current.record);
   form.note.value = finding ? finding.note : '';
   form.dialog.scrollTop = 0;
   const result = await showDialog(form.dialog);
-  const fields = { photo: form.photo, issue: form.issue.value, zone: form.zone.value.trim(), note: form.note.value.trim() };
+  const fields = {
+    photo: form.photo,
+    stamp: form.photoStamp,
+    issue: form.issue.value,
+    zone: form.zone.value.trim(),
+    note: form.note.value.trim(),
+  };
   setPhoto(null);
   return { result, fields };
 }

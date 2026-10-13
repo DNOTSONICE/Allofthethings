@@ -95,7 +95,10 @@
     <form id="finding-form">
       <h2 id="finding-title">New finding</h2>
 
-      <div id="photo-preview" class="photo-preview" hidden><img id="photo-img" alt="Finding photo"></div>
+      <div id="photo-preview" class="photo-preview photo-wrap" hidden>
+        <img id="photo-img" alt="Finding photo">
+        <div id="photo-stamp" class="stamp" hidden></div>
+      </div>
       <div class="photo-buttons">
         <label class="btn outline">
           <input id="photo-camera" type="file" accept="image/*" capture="environment" hidden>
@@ -106,6 +109,7 @@
           Choose photo
         </label>
       </div>
+      <p id="location-status" class="hint" hidden></p>
       <p id="photo-error" class="error" hidden></p>
 
       <label class="label" for="finding-issue">Issue</label>

@@ -220,7 +220,7 @@ select.field { appearance: none; background-image: linear-gradient(45deg, transp
 
 .label { display: block; margin: 14px 0 6px; font-size: 0.9rem; font-weight: 600; }
 h2 + .label { margin-top: 0; }
-.photo-buttons + .error + .label { margin-top: 18px; }
+label[for="finding-issue"] { margin-top: 18px; }
 .optional { font-weight: 400; color: var(--muted); }
 .error { color: var(--danger); margin: 8px 0 0; font-size: 0.9rem; }
 
@@ -377,3 +377,21 @@ body.in-report main { padding-bottom: calc(env(safe-area-inset-bottom) + 150px);
 .zone-group .section-title { margin-top: 18px; }
 .zone-group:first-child .section-title { margin-top: 4px; }
 .zone-group.current .section-title { color: var(--accent); }
+
+/* Time and location stamp over a photo */
+.photo-wrap { position: relative; }
+.stamp {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.hint { margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }
