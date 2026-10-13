@@ -37,6 +37,16 @@
     </section>
 
     <section id="report-view" hidden>
+      <div class="toolbar">
+        <button id="export-pdf" class="btn small outline">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Export PDF
+        </button>
+        <button id="show-coords" class="btn small outline">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          Coordinates
+        </button>
+      </div>
       <div id="finding-groups"></div>
       <p id="report-empty" class="empty" hidden>No findings yet. Set the zone you're starting in below, then tap <strong>Add finding</strong>.</p>
 
@@ -140,6 +150,19 @@
       <div class="actions">
         <button id="coords-copy" type="button" class="btn outline">Copy all</button>
         <button class="btn primary" value="cancel">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="pdf-dialog">
+    <form method="dialog">
+      <h2 id="pdf-title">Making PDF…</h2>
+      <p id="pdf-text">This takes a few seconds for reports with lots of photos.</p>
+      <div class="actions">
+        <button class="btn" value="cancel">Close</button>
+        <a id="pdf-open" class="btn outline small" target="_blank" rel="noopener" hidden>Open</a>
+        <button id="pdf-share" type="button" class="btn primary" hidden>Share</button>
+        <a id="pdf-download" class="btn primary" hidden>Download</a>
       </div>
     </form>
   </dialog>

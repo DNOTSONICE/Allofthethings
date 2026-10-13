@@ -2,6 +2,7 @@ import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto } from './photo.js';
 import { loadIssues } from './issues.js';
+import { buildReportPdf, pdfFileName } from './pdf.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -161,10 +162,12 @@ async function folderMenu(folder) {
 
 async function reportMenu(report) {
   const action = await askAction(report.name, [
+    { label: 'Export PDF', value: 'pdf' },
     { label: 'Coordinates list', value: 'coords' },
     { label: 'Edit name and date', value: 'edit' },
     { label: 'Delete', value: 'delete', danger: true },
   ]);
+  if (action === 'pdf') await exportPdf(report);
   if (action === 'coords') await showCoordinates(report);
   if (action === 'edit') await editReport(report);
   if (action === 'delete') await removeReport(report);
@@ -413,6 +416,53 @@ async function showCoordinates(report) {
   await showDialog($('#coords-dialog'));
 }
 
+// ---------- PDF export ----------
+
+let pdfUrl = null;
+
+async function exportPdf(report) {
+  const dialog = $('#pdf-dialog');
+  const share = $('#pdf-share');
+  const download = $('#pdf-download');
+  const open = $('#pdf-open');
+  $('#pdf-title').textContent = 'Making PDF…';
+  $('#pdf-text').textContent = 'This takes a few seconds for reports with lots of photos.';
+  share.hidden = download.hidden = open.hidden = true;
+  const closed = showDialog(dialog);
+
+  try {
+    const [path, findings] = await Promise.all([db.getPath(report.folderId), db.listFindings(report.id)]);
+    const property = path.map((f) => f.name);
+    const blob = await buildReportPdf({ report, property, groups: groupByZone(findings), zoneName });
+    const name = pdfFileName(property, report);
+    const file = new File([blob], name, { type: 'application/pdf' });
+
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    pdfUrl = URL.createObjectURL(blob);
+    download.href = open.href = pdfUrl;
+    download.download = name;
+
+    $('#pdf-title').textContent = 'PDF ready';
+    $('#pdf-text').textContent = `${name} (${Math.max(1, Math.round(blob.size / 1024))} KB)`;
+    // Phones get a Share button (save to Files, email, text); others get a download.
+    const canShare = navigator.canShare && navigator.canShare({ files: [file] });
+    share.hidden = !canShare;
+    download.hidden = !!canShare;
+    open.hidden = false;
+    share.onclick = async () => {
+      try {
+        await navigator.share({ files: [file], title: name });
+      } catch {
+        // Share sheet dismissed.
+      }
+    };
+  } catch (err) {
+    $('#pdf-title').textContent = 'Couldn’t make the PDF';
+    $('#pdf-text').textContent = err && err.message ? err.message : 'Something went wrong. Try again.';
+  }
+  await closed;
+}
+
 async function askReportDetails(title, submitLabel, initial) {
   $('#report-dialog-title').textContent = title;
   $('#report-submit').textContent = submitLabel;
@@ -646,6 +696,8 @@ $('#back').addEventListener('click', () => {
   else location.hash = parent;
 });
 
+$('#export-pdf').addEventListener('click', () => exportPdf(current.record));
+$('#show-coords').addEventListener('click', () => showCoordinates(current.record));
 $('#header-more').addEventListener('click', () => current.kind === 'report' && reportMenu(current.record));
 
 $('#fab').addEventListener('click', newInFolder);
