@@ -66,7 +66,22 @@ async function getAllBy(store, index, key) {
   return promisify(db.transaction(store).objectStore(store).index(index).getAll(key));
 }
 
+// Safari can lose a photo when a Blob read from the database is written back into it
+// (editing a finding saves its existing photo again): the new record points at the old
+// photo's storage, which Safari then deletes. Copying each Blob's bytes into a fresh
+// Blob first gives the new record its own copy.
+async function freshBlob(b) {
+  return new Blob([await b.arrayBuffer()], { type: b.type });
+}
+
+async function detachBlobs(record) {
+  const out = { ...record };
+  for (const [k, v] of Object.entries(out)) if (v instanceof Blob) out[k] = await freshBlob(v);
+  return out;
+}
+
 async function put(store, record) {
+  record = await detachBlobs(record);
   const db = await openDb();
   const tx = db.transaction(store, 'readwrite');
   tx.objectStore(store).put(record);
@@ -212,18 +227,14 @@ export async function saveFinding(reportId, fields, id = null) {
 
 // When an issue is renamed in the issue list, findings saved with the old name follow it.
 export async function renameIssue(from, to) {
-  const db = await openDb();
-  const tx = db.transaction('findings', 'readwrite');
-  const store = tx.objectStore('findings');
-  const all = await promisify(store.getAll());
+  const all = await getAll('findings');
   const now = Date.now();
   let n = 0;
   for (const f of all) {
     if (f.issue !== from) continue;
-    store.put({ ...f, issue: to, updatedAt: now });
+    await put('findings', { ...f, issue: to, updatedAt: now }); // put() keeps the photo safe
     n++;
   }
-  await txDone(tx);
   return n;
 }
 
