@@ -14,9 +14,15 @@ Done so far:
 - Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (links open the map), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
 - Backup and restore (home screen): save a backup file of everything, or one property from its ⋮ menu, with photos, logo and settings included. Share it to Files, Drive or email. Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
 
-## Editing the issue list
+## Issues and prices
 
-The Issue dropdown comes from `data/issues.json`, as named groups (Broken heads, Valve issues, ...), each with its list of issues. Edit the groups there, keeping the quotes, commas and brackets. Findings that used an issue you remove keep it.
+Tap **Issues and prices** on the home screen to turn issues on or off, rename them, add your own issues or groups, and set a price for each. Renaming an issue also renames it on findings already saved. Your list is saved on the phone and included in backups; **Reset to the starting list** goes back to the original.
+
+The starting list is `data/issues.json`, as named groups (Broken heads, Valve issues, ...). An issue can be a plain name or `{ "name": "Broken 6\" pop-up", "price": 45 }` to give it a starting price. Changes to this file only show on phones that haven't edited their list (or after a reset).
+
+## Repair estimates
+
+Each report has an optional **Include a repair estimate** checkbox (also in the report's ⋮ menu). With it on, each finding is priced from the price list (or a price typed on that finding), the report shows a running total, and the PDF adds the total to the cover and a Repair estimate page with quantity, unit price and amount per repair. Findings whose issue has no price are listed but left out of the total.
 
 ## Troubleshooting disclaimer
 

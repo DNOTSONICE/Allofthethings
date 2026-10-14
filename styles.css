@@ -538,3 +538,48 @@ body:not(.in-report) .zone-panel { display: none; }
 #backup-dialog .hint + .hint, #backup-dialog label + .hint { margin-top: 12px; }
 .sheet h2 { white-space: normal; }
 .toast.ok { background: #2e7d32; }
+
+/* ---------- Issues and prices ---------- */
+#issues-view > .hint { margin: 0 4px 4px; }
+.group-head { display: flex; align-items: center; justify-content: space-between; }
+.group-head .section-title { flex: 1; min-width: 0; }
+.group-head .row-more { width: 44px; height: 40px; margin-top: 12px; }
+.issue-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.issue-row:last-child { border-bottom: 0; }
+.issue-toggle { flex: none; display: grid; place-items: center; width: 52px; align-self: stretch; }
+.issue-toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
+.issue-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px 13px 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit;
+}
+.issue-main:active { background: var(--line); }
+.issue-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.issue-price { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+.issue-price.none { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+.issue-row.off .issue-name, .issue-row.off .issue-price { opacity: 0.45; }
+.add-issue { margin: 8px 0 0; }
+.issues-footer { margin-top: 24px; }
+
+/* ---------- Repair estimate ---------- */
+.report-estimate { align-items: flex-start; margin-top: 16px; }
+.report-estimate .hint { font-weight: 400; margin: 2px 0 0; display: inline-block; }
+.estimate-bar {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; width: 100%;
+  margin: 0 0 10px; padding: 12px 16px; border: 0; border-left: 4px solid var(--accent); border-radius: 12px;
+  background: var(--surface); color: inherit; text-align: left; font: inherit;
+}
+.estimate-bar:active { background: var(--line); }
+.estimate-caption { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.estimate-total { margin-left: auto; font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.estimate-detail { flex-basis: 100%; font-size: 0.85rem; color: var(--muted); }
+.estimate-detail.warn, .hint.warn { color: var(--danger); }
+.card-price { margin-top: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card-price.none { font-weight: 400; color: var(--danger); font-size: 0.85rem; }
+.estimate-lines { list-style: none; margin: 8px 0 0; padding: 0; }
+.estimate-lines li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.estimate-lines .line-text { flex: 1; min-width: 0; }
+.estimate-lines .line-detail { display: block; font-size: 0.85rem; color: var(--muted); }
+.estimate-lines .line-amount { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+.estimate-lines .line-amount.none { font-weight: 400; color: var(--danger); font-size: 0.85rem; }
+.estimate-sum { display: flex; justify-content: space-between; padding: 12px 0 0; font-weight: 700; font-size: 1.15rem; }
+#estimate-dialog .hint { margin-top: 8px; }

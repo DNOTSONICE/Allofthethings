@@ -168,9 +168,9 @@ export async function listReports(folderId) {
   return items.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 }
 
-export async function createReport(folderId, name, date) {
+export async function createReport(folderId, name, date, extra = {}) {
   const now = Date.now();
-  return put('reports', { id: newId(), folderId, name, date, createdAt: now, updatedAt: now });
+  return put('reports', { id: newId(), folderId, name, date, ...extra, createdAt: now, updatedAt: now });
 }
 
 export async function updateReport(id, changes) {
@@ -208,6 +208,23 @@ export async function saveFinding(reportId, fields, id = null) {
     ...fields,
     updatedAt: now,
   });
+}
+
+// When an issue is renamed in the issue list, findings saved with the old name follow it.
+export async function renameIssue(from, to) {
+  const db = await openDb();
+  const tx = db.transaction('findings', 'readwrite');
+  const store = tx.objectStore('findings');
+  const all = await promisify(store.getAll());
+  const now = Date.now();
+  let n = 0;
+  for (const f of all) {
+    if (f.issue !== from) continue;
+    store.put({ ...f, issue: to, updatedAt: now });
+    n++;
+  }
+  await txDone(tx);
+  return n;
 }
 
 export async function deleteFinding(id) {

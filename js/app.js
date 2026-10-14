@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
-import { loadIssueGroups } from './issues.js';
+import { loadIssueList, saveIssueList, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
 import { createBackup, readBackup, restoreBackup } from './backup.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText, formatTime } from './location.js';
@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 12;
+const APP_VERSION = 13;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -40,9 +40,11 @@ const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" c
 // #/            top-level folders
 // #/f/<id>      a folder
 // #/r/<id>      a report
+// #/issues      the issue list and prices
 // Using the URL hash means the phone's back button works.
 
 function route() {
+  if (location.hash === '#/issues') return { kind: 'issues', id: '' };
   const m = location.hash.match(/^#\/([fr])\/(.+)$/);
   if (!m) return { kind: 'folder', id: db.ROOT };
   return { kind: m[1] === 'r' ? 'report' : 'folder', id: decodeURIComponent(m[2]) };
@@ -57,6 +59,7 @@ let lastScreen = '';
 async function render() {
   const r = route();
   if (r.kind === 'report') await renderReport(r.id);
+  else if (r.kind === 'issues') await renderIssues();
   else await renderFolder(r.id);
   // Start at the top when moving to a different screen, but not when refreshing the same one.
   const screen = `${r.kind}:${r.id}`;
@@ -111,6 +114,7 @@ async function renderFolder(id) {
     : 'No properties yet. Tap <strong>New</strong> to add a folder for one.';
   await renderCompanyCard(!here);
   await renderBackupCard(!here);
+  await renderIssuesCard(!here);
   renderPropertyPhoto(path.length === 1 ? here : null);
   $('#app-version').hidden = !!here;
   $('#app-version').textContent = `App version ${APP_VERSION}`;
@@ -338,9 +342,14 @@ async function reportMenu(report) {
   const action = await askAction(report.name, [
     { label: 'Export PDF', value: 'pdf' },
     { label: 'Coordinates list', value: 'coords' },
-    { label: 'Edit name and date', value: 'edit' },
+    { label: report.estimate ? 'Turn off repair estimate' : 'Turn on repair estimate', value: 'estimate' },
+    { label: 'Edit report details', value: 'edit' },
     { label: 'Delete', value: 'delete', danger: true },
   ]);
+  if (action === 'estimate') {
+    await db.updateReport(report.id, { estimate: !report.estimate });
+    render();
+  }
   if (action === 'pdf') await exportPdf(report);
   if (action === 'coords') await showCoordinates(report);
   if (action === 'edit') await editReport(report);
@@ -363,9 +372,11 @@ async function newInFolder() {
     render();
   }
   if (action === 'report') {
-    const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today() });
+    const estimate = !!(await db.getSetting('estimateDefault')); // last choice made
+    const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate });
     if (!details) return;
-    const report = await db.createReport(folderId, details.name, details.date);
+    await db.setSetting('estimateDefault', details.estimate);
+    const report = await db.createReport(folderId, details.name, details.date, { estimate: details.estimate });
     location.hash = reportHref(report.id);
   }
 }
@@ -424,6 +435,8 @@ async function renderReport(id) {
   const findings = await db.listFindings(id);
   for (const u of photoUrls) URL.revokeObjectURL(u);
   photoUrls = [];
+  const list = report.estimate ? await loadIssueList() : null;
+  renderEstimateBar(report, findings, list);
 
   const sections = groupByZone(findings).map(([z, items]) => {
     const section = document.createElement('section');
@@ -433,7 +446,7 @@ async function renderReport(id) {
     h.textContent = `${zoneName(z)} · ${plural(items.length, 'finding')}`;
     const ul = document.createElement('ul');
     ul.className = 'cards';
-    ul.append(...items.map((f, i) => findingCard(f, i + 1)));
+    ul.append(...items.map((f, i) => findingCard(f, i + 1, list)));
     section.append(h, ul);
     return section;
   });
@@ -478,7 +491,7 @@ $('#zone-current').addEventListener('click', async () => {
   if (z !== null) setZone(z);
 });
 
-function findingCard(finding, number) {
+function findingCard(finding, number, list = null) {
   const li = document.createElement('li');
   li.dataset.id = finding.id;
   li.className = 'card';
@@ -501,6 +514,13 @@ function findingCard(finding, number) {
   head.className = 'card-issue';
   head.textContent = `${number}. ${finding.issue}`;
   body.append(head);
+  if (list) {
+    const price = findingPrice(finding, list);
+    const p = document.createElement('div');
+    p.className = 'card-price' + (price == null ? ' none' : '');
+    p.textContent = price == null ? 'No price' : formatMoney(price);
+    body.append(p);
+  }
   if (finding.note) {
     const n = document.createElement('div');
     n.className = 'card-note';
@@ -657,7 +677,9 @@ function exportPdf(report) {
         db.getSetting('accentColor'),
       ]);
       const property = path.map((f) => f.name);
+      const estimate = report.estimate ? buildEstimate(findings, await loadIssueList()) : null;
       const blob = await buildReportPdf({
+        estimate,
         report,
         property,
         propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
@@ -747,10 +769,12 @@ async function askReportDetails(title, submitLabel, initial) {
   $('#report-submit').textContent = submitLabel;
   $('#report-name').value = initial.name;
   $('#report-date').value = initial.date;
+  $('#report-estimate').checked = !!initial.estimate;
   const result = await showDialog($('#report-dialog'));
   const name = $('#report-name').value.trim();
   const date = $('#report-date').value;
-  return result === 'ok' && name && date ? { name, date } : null;
+  const estimate = $('#report-estimate').checked;
+  return result === 'ok' && name && date ? { name, date, estimate } : null;
 }
 
 async function editReport(report) {
@@ -771,6 +795,222 @@ async function removeReport(report) {
   else render();
 }
 
+// ---------- Repair estimate (report screen) ----------
+
+function renderEstimateBar(report, findings, list) {
+  const bar = $('#estimate-bar');
+  bar.hidden = !list;
+  if (!list) return;
+  const est = buildEstimate(findings, list);
+  $('#estimate-total').textContent = formatMoney(est.total);
+  const detail = $('#estimate-detail');
+  detail.classList.toggle('warn', est.unpriced > 0);
+  if (!findings.length) detail.textContent = 'Findings are priced from your price list as you add them.';
+  else if (est.unpriced) detail.textContent = `${plural(est.unpriced, 'finding')} without a price, not included. Tap to see the estimate.`;
+  else detail.textContent = `${plural(findings.length, 'finding')} priced. Tap to see the estimate.`;
+}
+
+async function showEstimate(report) {
+  const [findings, list] = await Promise.all([db.listFindings(report.id), loadIssueList()]);
+  const est = buildEstimate(findings, list);
+  $('#estimate-lines').replaceChildren(...est.lines.map((l) => {
+    const li = document.createElement('li');
+    const text = document.createElement('span');
+    text.className = 'line-text';
+    text.textContent = l.issue;
+    const detail = document.createElement('span');
+    detail.className = 'line-detail';
+    const zones = l.zones.length ? ` · ${l.zones.length === 1 ? 'Zone' : 'Zones'} ${l.zones.join(', ')}` : '';
+    detail.textContent = `${l.qty} × ${l.unit == null ? 'no price' : formatMoney(l.unit)}${zones}`;
+    text.append(detail);
+    const amount = document.createElement('span');
+    amount.className = 'line-amount' + (l.amount == null ? ' none' : '');
+    amount.textContent = l.amount == null ? 'No price' : formatMoney(l.amount);
+    li.append(text, amount);
+    return li;
+  }));
+  $('#estimate-sum').textContent = formatMoney(est.total);
+  const warn = $('#estimate-unpriced');
+  warn.hidden = !est.unpriced;
+  warn.textContent = `${plural(est.unpriced, 'finding')} without a price ${est.unpriced === 1 ? 'isn’t' : 'aren’t'} included. Set prices in Issues and prices, or type a price on the finding.`;
+  $('#estimate-prices').onclick = () => {
+    $('#estimate-dialog').close('cancel');
+    location.hash = '#/issues';
+  };
+  await showDialog($('#estimate-dialog'));
+}
+
+$('#estimate-bar').addEventListener('click', () => showEstimate(current.record));
+
+// ---------- Issues and prices ----------
+
+async function renderIssuesCard(show) {
+  $('#issues-card').hidden = !show;
+  if (!show) return;
+  const list = await loadIssueList();
+  const all = list.groups.flatMap((g) => g.issues);
+  const on = all.filter((i) => !i.off).length;
+  const priced = all.filter((i) => i.price != null).length;
+  $('#issues-card-detail').textContent = `${plural(on, 'issue')} in use, ${priced} priced. Tap to edit.`;
+}
+
+$('#issues-card').addEventListener('click', () => (location.hash = '#/issues'));
+
+let issueList = null; // what the issues screen is showing
+
+async function renderIssues() {
+  current = { kind: 'issues', id: '', record: null };
+  setHeader({ title: 'Issues and prices', back: true });
+  issueList = await loadIssueList();
+  $('#issue-groups').replaceChildren(...issueList.groups.map((g) => {
+    const section = document.createElement('section');
+    const head = document.createElement('div');
+    head.className = 'group-head';
+    const h = document.createElement('h2');
+    h.className = 'section-title';
+    h.textContent = g.name || 'Issues';
+    const more = document.createElement('button');
+    more.className = 'row-more';
+    more.setAttribute('aria-label', `Options for ${g.name || 'this group'}`);
+    more.innerHTML = MORE_ICON;
+    more.addEventListener('click', () => groupMenu(g));
+    head.append(h, more);
+
+    const ul = document.createElement('ul');
+    ul.className = 'list';
+    ul.append(...g.issues.map((issue) => issueRow(g, issue)));
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'btn small outline add-issue';
+    add.textContent = '+ Add issue';
+    add.addEventListener('click', () => addIssue(g));
+    section.append(head, ul, add);
+    return section;
+  }));
+  showView('issues');
+}
+
+function issueRow(group, issue) {
+  const li = document.createElement('li');
+  li.className = 'issue-row' + (issue.off ? ' off' : '');
+  const toggle = document.createElement('label');
+  toggle.className = 'issue-toggle';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = !issue.off;
+  box.setAttribute('aria-label', `Use ${issue.name}`);
+  box.addEventListener('change', async () => {
+    issue.off = !box.checked;
+    li.classList.toggle('off', issue.off);
+    await saveIssueList(issueList);
+  });
+  toggle.append(box);
+  const main = document.createElement('button');
+  main.type = 'button';
+  main.className = 'issue-main';
+  const name = document.createElement('span');
+  name.className = 'issue-name';
+  name.textContent = issue.name;
+  const price = document.createElement('span');
+  price.className = 'issue-price' + (issue.price == null ? ' none' : '');
+  price.textContent = issue.price == null ? 'No price' : formatMoney(issue.price);
+  main.append(name, price);
+  main.addEventListener('click', () => editIssue(group, issue));
+  li.append(toggle, main);
+  return li;
+}
+
+// Name and price dialog. Resolves with { name, price }, 'delete', or null.
+async function askIssue(title, issue) {
+  $('#issue-dialog-title').textContent = title;
+  $('#issue-name').value = issue ? issue.name : '';
+  $('#issue-price').value = issue && issue.price != null ? issue.price.toFixed(2) : '';
+  $('#issue-delete').hidden = !issue;
+  $('#issue-rename-hint').hidden = !issue;
+  const err = $('#issue-error');
+  err.hidden = true;
+  $('#issue-delete').onclick = () => $('#issue-dialog').close('delete');
+  for (;;) {
+    const result = await showDialog($('#issue-dialog'));
+    if (result === 'delete') return 'delete';
+    if (result !== 'ok') return null;
+    const name = $('#issue-name').value.trim();
+    const rawPrice = $('#issue-price').value.trim();
+    const price = toPrice(rawPrice);
+    const taken = findIssue(issueList, name);
+    let problem = '';
+    if (!name) problem = 'Give the issue a name.';
+    else if (taken && taken !== issue) problem = 'That issue is already on the list.';
+    else if (rawPrice && price == null) problem = 'Enter the price as a number, like 45 or 45.50.';
+    if (!problem) return { name, price };
+    err.textContent = problem;
+    err.hidden = false;
+  }
+}
+
+async function editIssue(group, issue) {
+  const r = await askIssue('Edit issue', issue);
+  if (!r) return;
+  if (r === 'delete') {
+    const ok = await askConfirm('Delete issue', `Remove “${issue.name}” from the list? Findings already saved with it keep it. To just hide it, turn it off instead.`);
+    if (!ok) return;
+    group.issues.splice(group.issues.indexOf(issue), 1);
+  } else {
+    const from = issue.name;
+    Object.assign(issue, r);
+    if (from !== r.name) await db.renameIssue(from, r.name);
+  }
+  await saveIssueList(issueList);
+  render();
+}
+
+async function addIssue(group) {
+  const r = await askIssue(`Add to ${group.name || 'the list'}`, null);
+  if (!r || r === 'delete') return;
+  group.issues.push({ ...r, off: false });
+  await saveIssueList(issueList);
+  render();
+}
+
+async function groupMenu(group) {
+  const action = await askAction(group.name || 'Issues', [
+    { label: 'Rename group', value: 'rename' },
+    { label: 'Delete group', value: 'delete', danger: true },
+  ]);
+  if (action === 'rename') {
+    const name = await askName('Rename group', 'Save', group.name, { placeholder: 'Group name' });
+    if (!name) return;
+    group.name = name;
+  } else if (action === 'delete') {
+    const n = group.issues.length;
+    const text = `Delete “${group.name || 'this group'}”${n ? ` and its ${plural(n, 'issue')}` : ''}? Findings already saved keep their issue.`;
+    if (!(await askConfirm('Delete group', text))) return;
+    issueList.groups.splice(issueList.groups.indexOf(group), 1);
+  } else return;
+  await saveIssueList(issueList);
+  render();
+}
+
+$('#add-group').addEventListener('click', async () => {
+  const name = await askName('New group', 'Create', '', { placeholder: 'Group name, like Lighting' });
+  if (!name) return;
+  issueList.groups.push({ name, issues: [] });
+  await saveIssueList(issueList);
+  await render();
+  $('main').scrollTo(0, $('main').scrollHeight);
+});
+
+$('#reset-issues').addEventListener('click', async () => {
+  const ok = await askConfirm(
+    'Reset issue list',
+    'Go back to the starting issue list? Your added issues, name changes, on/off choices and all prices will be removed. Findings already saved keep their issue.',
+    'Reset'
+  );
+  if (!ok) return;
+  await resetIssueList();
+  render();
+});
+
 // ---------- Finding form ----------
 
 const form = {
@@ -786,6 +1026,10 @@ const form = {
   note: $('#finding-note'),
   disclaimerCheck: $('#finding-disclaimer'),
   disclaimerText: $('#disclaimer-text'),
+  priceBox: $('#price-box'),
+  price: $('#finding-price'),
+  priceHint: $('#price-hint'),
+  list: null, // issue list, for prices
   disclaimer: '', // wording that goes on this finding if the box is checked
   del: $('#finding-delete'),
   photo: null, // compressed Blob
@@ -917,14 +1161,17 @@ $('#disclaimer-edit').addEventListener('click', async () => {
 });
 
 async function fillIssues(selected) {
-  const groups = await loadIssueGroups();
+  const list = (form.list = await loadIssueList());
   const placeholder = new Option('Choose an issue', '');
   placeholder.disabled = true;
   const options = [placeholder];
-  // Keep an issue that has since been removed from the list, so editing doesn't lose it.
-  if (selected && !groups.some((g) => g.issues.includes(selected))) options.push(new Option(selected, selected));
-  for (const g of groups) {
-    const items = g.issues.map((o) => new Option(o, o));
+  // Keep an issue that has since been turned off or removed, so editing doesn't lose it.
+  const shown = (i) => !i.off || i.name === selected;
+  const listed = list.groups.some((g) => g.issues.some((i) => i.name === selected && shown(i)));
+  if (selected && !listed) options.push(new Option(selected, selected));
+  for (const g of list.groups) {
+    const items = g.issues.filter(shown).map((i) => new Option(i.name, i.name));
+    if (!items.length) continue;
     if (!g.name) {
       options.push(...items);
       continue;
@@ -938,6 +1185,17 @@ async function fillIssues(selected) {
   form.issue.value = selected || '';
 }
 
+// The price field shows on reports with an estimate. Blank means "use the price list".
+function updatePriceHint() {
+  const issue = form.issue.value ? findIssue(form.list, form.issue.value) : null;
+  const listPrice = issue ? issue.price : null;
+  form.price.placeholder = listPrice != null ? formatMoney(listPrice) : 'No price';
+  if (!form.issue.value) form.priceHint.textContent = 'Choose an issue to fill in its price.';
+  else if (listPrice != null) form.priceHint.textContent = `Price list: ${formatMoney(listPrice)}. Type a different price for just this finding.`;
+  else form.priceHint.textContent = 'This issue has no price yet. Type one here, or set it in Issues and prices on the home screen.';
+}
+form.issue.addEventListener('change', updatePriceHint);
+
 async function openFindingForm(finding) {
   form.title.textContent = finding ? 'Edit finding' : 'New finding';
   form.del.hidden = !finding;
@@ -949,6 +1207,9 @@ async function openFindingForm(finding) {
   await fillIssues(finding ? finding.issue : '');
   form.zone.value = finding ? finding.zone : zoneOf(current.record);
   form.note.value = finding ? finding.note : '';
+  form.priceBox.hidden = !current.record.estimate;
+  form.price.value = finding && finding.price != null ? finding.price.toFixed(2) : '';
+  updatePriceHint();
   const saved = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
   setDisclaimer(finding && finding.disclaimer ? finding.disclaimer : saved, !!(finding && finding.disclaimer));
   form.dialog.scrollTop = 0;
@@ -960,7 +1221,11 @@ async function openFindingForm(finding) {
     zone: form.zone.value.trim(),
     note: form.note.value.trim(),
     disclaimer: form.disclaimerCheck.checked ? form.disclaimer : '',
+    // Kept as is when the price field is hidden. A price equal to the list price isn't stored,
+    // so the finding follows later price list changes.
+    price: form.priceBox.hidden ? (finding && finding.price != null ? finding.price : null) : toPrice(form.price.value),
   };
+  if (fields.price != null && fields.price === findingPrice({ issue: fields.issue }, form.list)) fields.price = null;
   setPhoto(null);
   return { result, fields };
 }
@@ -993,6 +1258,7 @@ async function editFinding(finding) {
 function showView(kind) {
   $('#folder-view').hidden = kind !== 'folder';
   $('#report-view').hidden = kind !== 'report';
+  $('#issues-view').hidden = kind !== 'issues';
   $('#fab').hidden = kind !== 'folder';
   document.body.classList.toggle('in-report', kind === 'report');
 }
@@ -1007,7 +1273,9 @@ window.addEventListener('hashchange', () => {
 });
 
 $('#back').addEventListener('click', () => {
-  const parent = current.kind === 'report'
+  const parent = current.kind === 'issues'
+    ? '#/'
+    : current.kind === 'report'
     ? folderHref(current.record.folderId)
     : folderHref(current.record ? current.record.parentId : db.ROOT);
   if (visited[visited.length - 2] === parent) history.back();

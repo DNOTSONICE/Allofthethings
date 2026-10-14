@@ -38,6 +38,16 @@
         </span>
       </button>
 
+      <button id="issues-card" class="company-card" hidden>
+        <span class="company-logo-box backup-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+        <span class="row-text">
+          <span class="row-name">Issues and prices</span>
+          <span id="issues-card-detail" class="row-detail">Edit the issue list and repair prices.</span>
+        </span>
+      </button>
+
       <button id="backup-card" class="company-card" hidden>
         <span class="company-logo-box backup-icon">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18zm5-8v6m0-6l-2.5 2.5M12 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -68,6 +78,15 @@
       <p id="app-version" class="version" hidden></p>
     </section>
 
+    <section id="issues-view" hidden>
+      <p class="hint">Turn issues off to hide them from the finding list. Tap an issue to rename it or set its price. Prices are used for repair estimates on reports that have them turned on.</p>
+      <div id="issue-groups"></div>
+      <div class="issues-footer">
+        <button id="add-group" type="button" class="btn outline wide">Add a group</button>
+        <button id="reset-issues" type="button" class="btn danger-text wide">Reset to the starting list</button>
+      </div>
+    </section>
+
     <section id="report-view" hidden>
       <div class="toolbar">
         <button id="export-pdf" class="btn small outline">
@@ -79,6 +98,11 @@
           Coordinates
         </button>
       </div>
+      <button id="estimate-bar" class="estimate-bar" hidden>
+        <span class="estimate-caption">Repair estimate</span>
+        <span id="estimate-total" class="estimate-total">$0.00</span>
+        <span id="estimate-detail" class="estimate-detail"></span>
+      </button>
       <div id="finding-groups"></div>
       <p id="report-empty" class="empty" hidden>No findings yet. Set the zone you're starting in below, then tap <strong>Add finding</strong>.</p>
 
@@ -127,6 +151,10 @@
       <input id="report-name" class="field" type="text" autocomplete="off" autocapitalize="sentences" required maxlength="120">
       <label class="label" for="report-date">Date</label>
       <input id="report-date" class="field" type="date" required>
+      <label class="check report-estimate">
+        <input id="report-estimate" type="checkbox">
+        <span>Include a repair estimate<br><span class="hint">Prices each finding from your price list.</span></span>
+      </label>
       <div class="actions">
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
         <button id="report-submit" type="submit" class="btn primary">Create</button>
@@ -155,6 +183,12 @@
 
       <label class="label" for="finding-issue">Issue</label>
       <select id="finding-issue" class="field" required></select>
+
+      <div id="price-box" hidden>
+        <label class="label" for="finding-price">Price</label>
+        <input id="finding-price" class="field" type="text" inputmode="decimal" autocomplete="off" maxlength="12">
+        <p id="price-hint" class="hint"></p>
+      </div>
 
       <label class="label" for="finding-zone">Zone</label>
       <input id="finding-zone" class="field" type="text" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="No zone">
@@ -229,6 +263,36 @@
       <div class="actions">
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="issue-dialog">
+    <form data-ok>
+      <h2 id="issue-dialog-title">Edit issue</h2>
+      <label class="label" for="issue-name">Issue</label>
+      <input id="issue-name" class="field" type="text" autocomplete="off" autocapitalize="sentences" required maxlength="120">
+      <label class="label" for="issue-price">Price <span class="optional">(optional)</span></label>
+      <input id="issue-price" class="field" type="text" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="No price">
+      <p id="issue-rename-hint" class="hint" hidden>Renaming also updates findings already saved with this issue.</p>
+      <p id="issue-error" class="error" hidden></p>
+      <div class="actions">
+        <button id="issue-delete" type="button" class="btn danger-text start">Delete</button>
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="estimate-dialog" class="full">
+    <form method="dialog">
+      <h2>Repair estimate</h2>
+      <ul id="estimate-lines" class="estimate-lines"></ul>
+      <div class="estimate-sum"><span>Total</span><span id="estimate-sum"></span></div>
+      <p id="estimate-unpriced" class="hint warn" hidden></p>
+      <div class="actions">
+        <button id="estimate-prices" type="button" class="btn outline start">Edit prices</button>
+        <button class="btn primary" value="cancel">Done</button>
       </div>
     </form>
   </dialog>

@@ -2,6 +2,7 @@
 
 import { coordsText, mapUrl, stampDetails } from './location.js';
 import { formatDate } from './ui.js';
+import { formatMoney } from './issues.js';
 
 let libPromise = null;
 
@@ -96,9 +97,10 @@ const tint = (c, amount) => c.map((v) => Math.round(v + (255 - v) * amount));
  * accent:   hex color for accent lines, e.g. "#1e5aa8"
  * groups:   [[zone, findings], ...] in the order they should print
  * zoneName: zone -> "Zone 4" / "No zone"
+ * estimate: null, or buildEstimate() from issues.js for a repair estimate page
  * Returns a Blob.
  */
-export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName }) {
+export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null }) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ unit: 'pt', format: 'letter' });
   const propertyName = property.join(' / ') || 'Wet check';
@@ -136,6 +138,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   }
 
   const total = groups.reduce((n, [, items]) => n + items.length, 0);
+  const findingPrices = new Map(estimate ? estimate.prices : []);
   const zones = groups.filter(([z]) => z).length;
   const located = groups.reduce((n, [, items]) => n + items.filter((f) => f.stamp && f.stamp.lat != null).length, 0);
 
@@ -217,7 +220,8 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     [String(zones), zones === 1 ? 'Zone' : 'Zones'],
     [String(located), located === 1 ? 'Location mapped' : 'Locations mapped'],
   ];
-  const tileW = (CONTENT_W - 16) / 3;
+  if (estimate) stats.push([formatMoney(estimate.total), 'Repair estimate']);
+  const tileW = (CONTENT_W - 8 * (stats.length - 1)) / stats.length;
   stats.forEach(([n, k], i) => {
     const x = MARGIN + i * (tileW + 8);
     fill(ACCENT_SOFT);
@@ -225,6 +229,8 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     fill(ACCENT);
     doc.rect(x, sy, 3, statsH, 'F');
     font('bold', 24);
+    // Shrink long numbers (estimate totals) to fit the tile.
+    doc.setFontSize(Math.min(24, (24 * (tileW - 24)) / doc.getTextWidth(n)));
     color(ACCENT);
     doc.text(n, x + 16, sy + 34);
     label(k, x + 16, sy + 50, MUTED, 7.5);
@@ -316,7 +322,12 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
         for (const l of doc.splitTextToSize(text, PAGE_W - MARGIN - x)) lines.push({ style, size, c, text: l, x, ...extra });
       };
       add('bold', 13, INK, f.issue, { x: titleX });
-      add('normal', 9.5, MUTED, zoneName(f.zone || ''), { x: titleX });
+      let sub = zoneName(f.zone || '');
+      if (estimate) {
+        const price = findingPrices.get(f.id);
+        sub += `  ·  ${price == null ? 'No price' : formatMoney(price)}`;
+      }
+      add('normal', 9.5, MUTED, sub, { x: titleX });
       if (f.note) {
         lines.push({ gap: 8 });
         add('normal', 10.5, INK, f.note);
@@ -446,6 +457,94 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     });
     stroke(ACCENT, 1);
     doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+  }
+
+  // ================= Repair estimate =================
+  if (estimate && estimate.lines.length) {
+    newPage();
+    font('bold', 18);
+    color(INK);
+    doc.text('Repair estimate', MARGIN, y + 18);
+    fill(ACCENT);
+    doc.rect(MARGIN, y + 26, 40, 3, 'F');
+    y += 38;
+    font('normal', 9);
+    color(MUTED);
+    doc.text(`Repairs for the findings in this report${companyName ? `, from ${companyName}` : ''}.`, MARGIN, y + 9);
+    y += 22;
+
+    const right = PAGE_W - MARGIN - 10;
+    const cols = [
+      { title: 'Repair', x: MARGIN + 10, w: 250 },
+      { title: 'Qty', x: right - 170, align: 'right' },
+      { title: 'Unit price', x: right - 80, align: 'right' },
+      { title: 'Amount', x: right, align: 'right' },
+    ];
+    const head = () => {
+      fill(ACCENT);
+      doc.rect(MARGIN, y, CONTENT_W, 22, 'F');
+      for (const c of cols) label(c.title, c.x, y + 14.5, WHITE, 7.5, c.align ? { align: c.align } : {});
+      y += 22;
+    };
+    head();
+    estimate.lines.forEach((l, k) => {
+      font('normal', 10);
+      const nameLines = doc.splitTextToSize(l.issue, cols[0].w);
+      const zonesText = l.zones.length ? `${l.zones.length === 1 ? 'Zone' : 'Zones'} ${l.zones.join(', ')}` : '';
+      const h = nameLines.length * lineHeight(10) + (zonesText ? lineHeight(8.5) : 0) + 12;
+      if (y + h > bodyBottom) {
+        newPage();
+        head();
+      }
+      if (k % 2) {
+        fill(ACCENT_SOFT);
+        doc.rect(MARGIN, y, CONTENT_W, h, 'F');
+      }
+      const base = y + 7 + 10;
+      color(INK);
+      font('normal', 10);
+      nameLines.forEach((t, j) => doc.text(t, cols[0].x, base + j * lineHeight(10)));
+      if (zonesText) {
+        font('normal', 8.5);
+        color(MUTED);
+        doc.text(zonesText, cols[0].x, base + nameLines.length * lineHeight(10) - 1);
+      }
+      font('normal', 10);
+      color(INK);
+      doc.text(String(l.qty), cols[1].x, base, { align: 'right' });
+      if (l.unit == null) {
+        color(MUTED);
+        doc.text('Not priced', cols[2].x, base, { align: 'right' });
+        doc.text('—', cols[3].x, base, { align: 'right' });
+      } else {
+        doc.text(formatMoney(l.unit), cols[2].x, base, { align: 'right' });
+        font('bold', 10);
+        doc.text(formatMoney(l.amount), cols[3].x, base, { align: 'right' });
+      }
+      y += h;
+    });
+
+    // Total.
+    ensure(60);
+    stroke(ACCENT, 1);
+    doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+    y += 10;
+    fill(ACCENT_SOFT);
+    doc.rect(PAGE_W - MARGIN - 220, y, 220, 36, 'F');
+    fill(ACCENT);
+    doc.rect(PAGE_W - MARGIN - 220, y, 3, 36, 'F');
+    label('Estimate total', PAGE_W - MARGIN - 205, y + 22, MUTED, 8);
+    font('bold', 16);
+    color(ACCENT);
+    doc.text(formatMoney(estimate.total), right, y + 24, { align: 'right' });
+    y += 48;
+    if (estimate.unpriced) {
+      font('italic', 9);
+      color(MUTED);
+      const n = estimate.unpriced;
+      doc.text(`${n} ${n === 1 ? 'finding is' : 'findings are'} not priced and not included in the total.`, MARGIN, y + 9);
+      y += 18;
+    }
   }
 
   // ================= Header and footer on inside pages =================
