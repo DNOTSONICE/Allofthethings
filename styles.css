@@ -598,3 +598,4 @@ body:not(.in-report) .zone-panel { display: none; }
   position: absolute; top: 8px; right: 8px; padding: 3px 9px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 0.8rem; font-weight: 600;
 }
+#pdf-dialog .actions .btn.outline { flex: none; }

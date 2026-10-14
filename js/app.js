@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 18;
+const APP_VERSION = 19;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -666,15 +666,31 @@ async function deliverFile({ working, workingText, ready, failed, canOpen = fals
     $('#pdf-title').textContent = ready;
     const size = blob.size > 1024 * 1024 ? `${(blob.size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(blob.size / 1024))} KB`;
     $('#pdf-text').textContent = `${name} (${size})${detail ? `. ${detail}` : ''}`;
-    const canShare = navigator.canShare && navigator.canShare({ files: [file] });
+    // Android's Chrome only shares some file types (PDFs and photos, not .zip backups), so
+    // Download is always offered too, and a share that fails falls back to downloading.
+    let canShare = false;
+    try {
+      canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    } catch {
+      canShare = false;
+    }
     share.hidden = !canShare;
-    download.hidden = !!canShare;
+    download.hidden = false;
+    download.classList.toggle('primary', !canShare);
+    download.classList.toggle('outline', canShare);
+    download.textContent = canShare ? 'Save' : 'Download';
     open.hidden = !canOpen;
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (!canShare && isAndroid) {
+      $('#pdf-text').textContent += ' This phone can’t share this kind of file directly: tap Download, then share it from the Files app (Downloads).';
+    }
     share.onclick = async () => {
       try {
         await navigator.share({ files: [file], title: name });
-      } catch {
-        // Share sheet dismissed.
+      } catch (err) {
+        if (err && err.name === 'AbortError') return; // share sheet dismissed
+        download.click();
+        $('#pdf-text').textContent = `Sharing didn’t open on this phone, so ${name} was downloaded instead. You can share it from the Files app (Downloads).`;
       }
     };
   } catch (err) {
@@ -748,7 +764,7 @@ function backUp(folder = null) {
         progress: (text) => ($('#pdf-text').textContent = `Packing up your reports, PDFs and photos. ${text}`),
       });
       const missing = pdfsFailed ? ` ${plural(pdfsFailed, 'PDF')} couldn’t be made and ${pdfsFailed === 1 ? 'was' : 'were'} left out.` : '';
-      return { blob, name, detail: `Includes ${countsText(counts)}.${missing} Save it to Files or iCloud Drive; tap it there to open it as a folder.` };
+      return { blob, name, detail: `Includes ${countsText(counts)}.${missing} Save it somewhere safe, like Files, iCloud Drive or Google Drive. Open it there to see it as a folder.` };
     },
   }).then(() => render());
 }
