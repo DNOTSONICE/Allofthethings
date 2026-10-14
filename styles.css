@@ -610,3 +610,30 @@ body:not(.in-report) .zone-panel { display: none; }
 .issue-tag.own { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 #issue-dialog .btn.start + .btn.start { margin-left: 0; }
 .disclaimer-enabled { margin: 0 0 12px; }
+
+.subdivision-group { margin-top: 4px; }
+.subdivision-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 0;
+  margin-bottom: 4px;
+  min-height: 32px;
+}
+.subdivision-group > summary::-webkit-details-marker { display: none; }
+.subdivision-group > summary::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  flex: none;
+  margin: 0 3px;
+}
+.subdivision-group[open] > summary::before { transform: rotate(45deg); }
+.subdivision-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text, inherit); }
+.subdivision-count { font-weight: 500; text-transform: none; letter-spacing: 0; }

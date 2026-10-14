@@ -65,8 +65,7 @@
       </button>
 
       <ul id="folder-list" class="list"></ul>
-      <h2 id="reports-heading" class="section-title" hidden>Wet check reports</h2>
-      <ul id="report-list" class="list"></ul>
+      <div id="report-groups"></div>
       <p id="folder-empty" class="empty" hidden>Nothing here yet. Tap <strong>New</strong> to add a folder or a wet check report.</p>
       <p id="app-version" class="version" hidden></p>
     </section>
@@ -206,7 +205,8 @@
       <label class="label" for="report-name">Report name</label>
       <input id="report-name" class="field" type="text" autocomplete="off" autocapitalize="sentences" required maxlength="120">
       <label class="label" for="report-subdivision">Subdivision <span class="optional">(optional)</span></label>
-      <input id="report-subdivision" class="field" type="text" autocomplete="off" autocapitalize="words" maxlength="120">
+      <input id="report-subdivision" class="field" type="text" autocomplete="off" autocapitalize="words" maxlength="120" list="subdivision-options">
+      <datalist id="subdivision-options"></datalist>
       <label class="label" for="report-date">Date</label>
       <input id="report-date" class="field" type="date" required>
       <label class="check report-estimate">

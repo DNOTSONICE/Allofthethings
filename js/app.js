@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 21;
+const APP_VERSION = 22;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -117,8 +117,7 @@ async function renderFolder(id) {
 
   const [folders, reports] = await Promise.all([db.listChildren(id), here ? db.listReports(id) : []]);
   $('#folder-list').replaceChildren(...folders.map(folderRow));
-  $('#report-list').replaceChildren(...reports.map(reportRow));
-  $('#reports-heading').hidden = reports.length === 0;
+  renderReportGroups(id, reports);
   $('#folder-empty').hidden = folders.length + reports.length > 0;
   $('#folder-empty').innerHTML = here
     ? 'Nothing here yet. Tap <strong>New</strong> to add a wet check report or a folder.'
@@ -129,6 +128,80 @@ async function renderFolder(id) {
   $('#app-version').hidden = !!here;
   $('#app-version').textContent = `App version ${APP_VERSION}`;
   showView('folder');
+}
+
+// Reports without a subdivision come first under "Wet check reports"; each subdivision gets
+// its own section after them (A to Z), which can be folded away. Subdivision names match
+// regardless of capitals and spaces.
+const subKey = (name) => (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+function subdivisionGroups(reports) {
+  const groups = new Map();
+  for (const r of reports) {
+    const key = subKey(r.subdivision);
+    if (!key) continue;
+    const name = r.subdivision.trim().replace(/\s+/g, ' ');
+    if (!groups.has(key)) groups.set(key, { key, name, reports: [] });
+    const g = groups.get(key);
+    if (g.name === g.name.toLowerCase() && name !== name.toLowerCase()) g.name = name; // show a capitalized spelling if any
+    g.reports.push(r);
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+const FOLDED_KEY = 'foldedSubdivisions';
+function foldedSet() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+function setFolded(id, folded) {
+  const set = foldedSet();
+  if (folded) set.add(id);
+  else set.delete(id);
+  try {
+    localStorage.setItem(FOLDED_KEY, JSON.stringify([...set]));
+  } catch {}
+}
+
+function renderReportGroups(folderId, reports) {
+  const out = [];
+  const loose = reports.filter((r) => !subKey(r.subdivision));
+  const groups = subdivisionGroups(reports);
+  if (loose.length) {
+    const h = document.createElement('h2');
+    h.className = 'section-title';
+    h.textContent = 'Wet check reports';
+    const ul = document.createElement('ul');
+    ul.className = 'list';
+    ul.append(...loose.map((r) => reportRow(r)));
+    out.push(h, ul);
+  }
+  const folded = foldedSet();
+  for (const g of groups) {
+    const foldId = `${folderId}|${g.key}`;
+    const box = document.createElement('details');
+    box.className = 'subdivision-group';
+    box.open = !folded.has(foldId);
+    const summary = document.createElement('summary');
+    summary.className = 'section-title';
+    const name = document.createElement('span');
+    name.className = 'subdivision-name';
+    name.textContent = g.name;
+    const count = document.createElement('span');
+    count.className = 'subdivision-count';
+    count.textContent = `${g.reports.length} report${g.reports.length === 1 ? '' : 's'}`;
+    summary.append(name, count);
+    const ul = document.createElement('ul');
+    ul.className = 'list';
+    ul.append(...g.reports.map((r) => reportRow(r, true)));
+    box.append(summary, ul);
+    box.addEventListener('toggle', () => setFolded(foldId, !box.open));
+    out.push(box);
+  }
+  $('#report-groups').replaceChildren(...out);
 }
 
 // ---------- Company logo (home screen) ----------
@@ -325,11 +398,11 @@ function folderRow(folder) {
 
 const reportDetail = (r) => [formatDate(r.date), r.subdivision].filter(Boolean).join(' · ');
 
-function reportRow(report) {
+function reportRow(report, grouped = false) {
   return row({
     icon: REPORT_ICON,
     name: report.name,
-    detail: reportDetail(report),
+    detail: grouped ? formatDate(report.date) : reportDetail(report),
     href: reportHref(report.id),
     menuLabel: `Options for ${report.name}`,
     onMenu: () => reportMenu(report),
@@ -401,7 +474,7 @@ async function newInFolder() {
   }
   if (action === 'report') {
     const estimate = !!(await db.getSetting('estimateDefault')); // last choice made
-    const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate });
+    const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate }, folderId);
     if (!details) return;
     await db.setSetting('estimateDefault', details.estimate);
     const prices = priceSnapshot(await issueListFor(folderId)); // locked in for this report
@@ -831,7 +904,14 @@ $('#restore-file').addEventListener('change', async (e) => {
   showToast(`Restored ${countsText(backup.counts)}.`, 'ok');
 });
 
-async function askReportDetails(title, submitLabel, initial) {
+async function askReportDetails(title, submitLabel, initial, folderId) {
+  // Offer the subdivisions already used in this folder, so the same name groups together.
+  const used = subdivisionGroups(await db.listReports(folderId)).map((g) => {
+    const o = document.createElement('option');
+    o.value = g.name;
+    return o;
+  });
+  $('#subdivision-options').replaceChildren(...used);
   $('#report-dialog-title').textContent = title;
   $('#report-submit').textContent = submitLabel;
   $('#report-name').value = initial.name;
@@ -847,7 +927,7 @@ async function askReportDetails(title, submitLabel, initial) {
 }
 
 async function editReport(report) {
-  const details = await askReportDetails('Edit report', 'Save', report);
+  const details = await askReportDetails('Edit report', 'Save', report, report.folderId);
   if (!details) return;
   await db.updateReport(report.id, details);
   render();
