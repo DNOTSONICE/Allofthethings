@@ -56,6 +56,14 @@
         </div>
       </div>
 
+      <button id="profile-card" class="company-card" hidden>
+        <span class="company-logo-box backup-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 10a2 2 0 1 0 4 0 2 2 0 0 0-4 0m-1 6c.6-1.6 2-2.5 3-2.5s2.4.9 3 2.5M15 9h3M15 12h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="row-text">
+          <span class="row-name">Property profile</span>
+          <span id="profile-card-detail" class="row-detail">Contact, disclaimer, and issues and prices for this property.</span>
+        </span>
+      </button>
+
       <ul id="folder-list" class="list"></ul>
       <h2 id="reports-heading" class="section-title" hidden>Wet check reports</h2>
       <ul id="report-list" class="list"></ul>
@@ -92,6 +100,31 @@
         </span>
       </button>
       <p id="settings-version" class="version"></p>
+    </section>
+
+    <section id="profile-view" hidden>
+      <h2 class="section-title">Property contact</h2>
+      <button id="profile-contact" class="company-card">
+        <span class="company-logo-box backup-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 8a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+        <span class="row-text">
+          <span id="profile-contact-name" class="row-name">Add a property contact</span>
+          <span id="profile-contact-detail" class="row-detail">Shown on the cover of this property's reports.</span>
+        </span>
+      </button>
+      <h2 class="section-title">Troubleshooting disclaimer</h2>
+      <button id="profile-disclaimer" class="company-card">
+        <span class="company-logo-box backup-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="row-text">
+          <span id="profile-disclaimer-name" class="row-name">Using the main disclaimer</span>
+          <span id="profile-disclaimer-text" class="row-detail"></span>
+        </span>
+      </button>
+      <h2 class="section-title">Issues and prices</h2>
+      <p class="hint profile-hint">Changes here apply only to this property's new reports. Anything you don't change follows the main list in Settings. Issues marked <strong>Custom</strong> override the main list.</p>
+      <div id="profile-issue-groups"></div>
+      <div class="issues-footer">
+        <button id="reset-profile" type="button" class="btn danger-text wide">Reset this property to the main settings</button>
+      </div>
     </section>
 
     <section id="issues-view" hidden>
@@ -304,9 +337,30 @@
       <label class="label" for="issue-price">Price <span class="optional">(optional)</span></label>
       <input id="issue-price" class="field" type="text" inputmode="decimal" autocomplete="off" maxlength="12" placeholder="No price">
       <p id="issue-rename-hint" class="hint" hidden>Renaming also updates findings already saved with this issue.</p>
+      <p id="issue-main-hint" class="hint" hidden></p>
       <p id="issue-error" class="error" hidden></p>
       <div class="actions">
         <button id="issue-delete" type="button" class="btn danger-text start">Delete</button>
+        <button id="issue-reset" type="button" class="btn start" hidden>Reset to main list</button>
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="contact-dialog">
+    <form data-ok>
+      <h2>Property contact</h2>
+      <p class="hint">Shown on the cover of this property's reports. Leave everything blank to remove it.</p>
+      <label class="label" for="contact-name">Name</label>
+      <input id="contact-name" class="field" type="text" autocomplete="off" autocapitalize="words" maxlength="120" placeholder="e.g. Jane Smith, HOA manager">
+      <label class="label" for="contact-phone">Phone</label>
+      <input id="contact-phone" class="field" type="tel" autocomplete="off" maxlength="40">
+      <label class="label" for="contact-email">Email</label>
+      <input id="contact-email" class="field" type="email" autocomplete="off" autocapitalize="off" maxlength="120">
+      <label class="label" for="contact-address">Address</label>
+      <textarea id="contact-address" class="field" rows="2" maxlength="300"></textarea>
+      <div class="actions">
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
       </div>
@@ -320,7 +374,7 @@
       <div class="estimate-sum"><span>Total</span><span id="estimate-sum"></span></div>
       <p id="estimate-unpriced" class="hint warn" hidden></p>
       <div class="actions">
-        <button id="estimate-prices" type="button" class="btn outline start">Edit prices</button>
+        <button id="estimate-refresh" type="button" class="btn outline start">Use current prices</button>
         <button class="btn primary" value="cancel">Done</button>
       </div>
     </form>

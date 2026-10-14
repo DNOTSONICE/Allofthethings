@@ -68,16 +68,63 @@ export function priceOf(list, name) {
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 export const formatMoney = (n) => money.format(n);
 
-// What a finding costs: its own price if one was typed on the finding, otherwise the price list.
-export const findingPrice = (finding, list) => (finding.price != null ? finding.price : priceOf(list, finding.issue));
+// ---------- Property profiles ----------
+// A top-level property folder can carry folder.profile:
+// { issues: { [issue name]: { price?, off? } }, added: [{ group, name, price, off }],
+//   disclaimer: string|null, contact: { name, phone, email, address } }
+// Only what the user changed is stored, so everything else keeps following the main list.
+
+// The main list with a property's changes applied. Changed issues get custom: true (plus
+// mainPrice/mainOff to show what they override); property-only issues get own: true.
+export function effectiveList(list, profile) {
+  if (!profile) return list;
+  const over = profile.issues || {};
+  const out = {
+    groups: list.groups.map((g) => ({
+      name: g.name,
+      issues: g.issues.map((i) => {
+        const o = over[i.name];
+        if (!o) return { ...i };
+        const changed = { ...i, custom: true, mainPrice: i.price, mainOff: !!i.off };
+        if ('price' in o) changed.price = o.price;
+        if ('off' in o) changed.off = o.off;
+        return changed;
+      }),
+    })),
+  };
+  for (const a of profile.added || []) {
+    let g = out.groups.find((x) => x.name === a.group);
+    if (!g) {
+      g = { name: a.group || 'Property issues', issues: [] };
+      out.groups.push(g);
+    }
+    g.issues.push({ name: a.name, price: a.price ?? null, off: !!a.off, own: true });
+  }
+  return out;
+}
+
+// The prices a report keeps from the day it was created: { issue name: price }.
+export function priceSnapshot(list) {
+  const out = {};
+  for (const g of list.groups) for (const i of g.issues) if (i.price != null) out[i.name] = i.price;
+  return out;
+}
+
+// What a finding costs: a price typed on the finding, else the report's prices from when it
+// was created, else (for an issue that had no price then) the current list.
+export function findingPrice(finding, list, snapshot = null) {
+  if (finding.price != null) return finding.price;
+  if (snapshot && snapshot[finding.issue] != null) return snapshot[finding.issue];
+  return priceOf(list, finding.issue);
+}
 
 // Repair estimate lines for a report: one line per issue and price, with how many and which zones.
 // Returns { lines: [{ issue, unit, qty, amount, zones }], total, unpriced, prices: [[findingId, price]] }.
-export function buildEstimate(findings, list) {
+export function buildEstimate(findings, list, snapshot = null) {
   const lines = new Map();
   const prices = [];
   for (const f of findings) {
-    const unit = findingPrice(f, list);
+    const unit = findingPrice(f, list, snapshot);
     prices.push([f.id, unit]);
     const key = `${f.issue}\u0000${unit}`;
     if (!lines.has(key)) lines.set(key, { issue: f.issue, unit, qty: 0, amount: null, zones: [] });

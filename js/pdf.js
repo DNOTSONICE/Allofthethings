@@ -102,9 +102,10 @@ const tint = (c, amount) => c.map((v) => Math.round(v + (255 - v) * amount));
  * groups:   [[zone, findings], ...] in the order they should print
  * zoneName: zone -> "Zone 4" / "No zone"
  * estimate: null, or buildEstimate() from issues.js for a repair estimate page
+ * contact:  null, or the property's contact { name, phone, email, address } for the cover
  * Returns a Blob.
  */
-export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null }) {
+export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null, contact = null }) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ unit: 'pt', format: 'letter' });
   const propertyName = property.join(' / ') || 'Wet check';
@@ -214,6 +215,22 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     doc.text(doc.splitTextToSize(v, colW - 12)[0], x, y + 16);
   });
   y += 34;
+
+  // Property contact, under the details.
+  if (contact) {
+    const lines = [contact.name, [contact.phone, contact.email].filter(Boolean).join('   ·   '), contact.address].filter(Boolean);
+    label('Property contact', MARGIN, y, MUTED, 7.5);
+    y += 4;
+    lines.forEach((l, i) => {
+      font(i === 0 && contact.name ? 'bold' : 'normal', i === 0 && contact.name ? 11.5 : 10);
+      color(INK);
+      for (const t of doc.splitTextToSize(l, CONTENT_W)) {
+        y += lineHeight(10.5);
+        doc.text(t, MARGIN, y);
+      }
+    });
+    y += 18;
+  }
 
   // Space for the bottom block (stats + logo), so the photo can fill what's left.
   const statsH = 64;

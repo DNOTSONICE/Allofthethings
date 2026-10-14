@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
-import { loadIssueList, saveIssueList, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate } from './issues.js';
+import { loadIssueList, saveIssueList, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
 import { createBackup, readBackup, restoreBackup } from './backup.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText, formatTime } from './location.js';
@@ -10,9 +10,10 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 19;
+const APP_VERSION = 20;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
+const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
 
 // ---------- Error banner ----------
 // Shows problems on screen instead of failing silently.
@@ -42,11 +43,14 @@ const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" c
 // #/r/<id>      a report
 // #/settings    settings: company, issues and prices, backup
 // #/issues      the issue list and prices
+// #/p/<id>      a property's profile (contact, disclaimer, its own issues and prices)
 // Using the URL hash means the phone's back button works.
 
 function route() {
   if (location.hash === '#/issues') return { kind: 'issues', id: '' };
   if (location.hash === '#/settings') return { kind: 'settings', id: '' };
+  const p = location.hash.match(/^#\/p\/(.+)$/);
+  if (p) return { kind: 'profile', id: decodeURIComponent(p[1]) };
   const m = location.hash.match(/^#\/([fr])\/(.+)$/);
   if (!m) return { kind: 'folder', id: db.ROOT };
   return { kind: m[1] === 'r' ? 'report' : 'folder', id: decodeURIComponent(m[2]) };
@@ -54,6 +58,7 @@ function route() {
 
 const folderHref = (id) => (id === db.ROOT ? '#/' : `#/f/${encodeURIComponent(id)}`);
 const reportHref = (id) => `#/r/${encodeURIComponent(id)}`;
+const profileHref = (id) => `#/p/${encodeURIComponent(id)}`;
 
 let current = null; // what's on screen: { kind, id, record }
 let lastScreen = '';
@@ -63,6 +68,7 @@ async function render() {
   if (r.kind === 'report') await renderReport(r.id);
   else if (r.kind === 'issues') await renderIssues();
   else if (r.kind === 'settings') await renderSettings();
+  else if (r.kind === 'profile') await renderProfile(r.id);
   else await renderFolder(r.id);
   // Start at the top when moving to a different screen, but not when refreshing the same one.
   const screen = `${r.kind}:${r.id}`;
@@ -119,6 +125,7 @@ async function renderFolder(id) {
     : 'No properties yet. Tap <strong>New</strong> to add a folder for one.';
   await renderBackupCard(!here);
   renderPropertyPhoto(path.length === 1 ? here : null);
+  renderProfileCard(path.length === 1 ? here : null);
   $('#app-version').hidden = !!here;
   $('#app-version').textContent = `App version ${APP_VERSION}`;
   showView('folder');
@@ -330,11 +337,14 @@ function reportRow(report) {
 }
 
 async function folderMenu(folder) {
+  const top = folder.parentId === db.ROOT;
   const action = await askAction(folder.name, [
+    ...(top ? [{ label: 'Property profile', value: 'profile' }] : []),
     { label: 'Rename', value: 'rename' },
     { label: 'Back up or share this property', value: 'backup' },
     { label: 'Delete', value: 'delete', danger: true },
   ]);
+  if (action === 'profile') location.hash = profileHref(folder.id);
   if (action === 'backup') await backUp(folder);
   if (action === 'rename') {
     const name = await askName('Rename folder', 'Save', folder.name);
@@ -359,6 +369,7 @@ async function reportMenu(report) {
     { label: 'Export PDF', value: 'pdf' },
     { label: 'Coordinates list', value: 'coords' },
     { label: report.estimate ? 'Turn off repair estimate' : 'Turn on repair estimate', value: 'estimate' },
+    ...(report.estimate ? [{ label: 'Use current prices', value: 'prices' }] : []),
     { label: 'Edit report details', value: 'edit' },
     { label: 'Delete', value: 'delete', danger: true },
   ]);
@@ -366,6 +377,7 @@ async function reportMenu(report) {
     await db.updateReport(report.id, { estimate: !report.estimate });
     render();
   }
+  if (action === 'prices') await refreshPrices(report);
   if (action === 'pdf') await exportPdf(report);
   if (action === 'coords') await showCoordinates(report);
   if (action === 'edit') await editReport(report);
@@ -392,7 +404,8 @@ async function newInFolder() {
     const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate });
     if (!details) return;
     await db.setSetting('estimateDefault', details.estimate);
-    const report = await db.createReport(folderId, details.name, details.date, { estimate: details.estimate, subdivision: details.subdivision });
+    const prices = priceSnapshot(await issueListFor(folderId)); // locked in for this report
+    const report = await db.createReport(folderId, details.name, details.date, { estimate: details.estimate, subdivision: details.subdivision, prices });
     location.hash = reportHref(report.id);
   }
 }
@@ -451,7 +464,7 @@ async function renderReport(id) {
   const findings = await db.listFindings(id);
   for (const u of photoUrls) URL.revokeObjectURL(u);
   photoUrls = [];
-  const list = report.estimate ? await loadIssueList() : null;
+  const list = report.estimate ? await issueListFor(report.folderId) : null;
   renderEstimateBar(report, findings, list);
 
   const sections = groupByZone(findings).map(([z, items]) => {
@@ -462,7 +475,7 @@ async function renderReport(id) {
     h.textContent = `${zoneName(z)} · ${plural(items.length, 'finding')}`;
     const ul = document.createElement('ul');
     ul.className = 'cards';
-    ul.append(...items.map((f, i) => findingCard(f, i + 1, list)));
+    ul.append(...items.map((f, i) => findingCard(f, i + 1, list, report.prices)));
     section.append(h, ul);
     return section;
   });
@@ -507,7 +520,7 @@ $('#zone-current').addEventListener('click', async () => {
   if (z !== null) setZone(z);
 });
 
-function findingCard(finding, number, list = null) {
+function findingCard(finding, number, list = null, snapshot = null) {
   const li = document.createElement('li');
   li.dataset.id = finding.id;
   li.className = 'card';
@@ -538,7 +551,7 @@ function findingCard(finding, number, list = null) {
   head.textContent = `${number}. ${finding.issue}`;
   body.append(head);
   if (list) {
-    const price = findingPrice(finding, list);
+    const price = findingPrice(finding, list, snapshot);
     const p = document.createElement('div');
     p.className = 'card-price' + (price == null ? ' none' : '');
     p.textContent = price == null ? 'No price' : formatMoney(price);
@@ -702,15 +715,17 @@ async function deliverFile({ working, workingText, ready, failed, canOpen = fals
 
 // The report's PDF: { blob, name }. Used by Export PDF and by backups.
 async function reportPdf(report) {
-  const [path, findings, logo, companyName, accent] = await Promise.all([
+  const [path, findings, logo, companyName, accent, list] = await Promise.all([
     db.getPath(report.folderId),
     db.listFindings(report.id),
     db.getSetting('companyLogo'),
     db.getSetting('companyName'),
     db.getSetting('accentColor'),
+    issueListFor(report.folderId),
   ]);
   const property = path.map((f) => f.name);
-  const estimate = report.estimate ? buildEstimate(findings, await loadIssueList()) : null;
+  const estimate = report.estimate ? buildEstimate(findings, list, report.prices) : null;
+  const profile = path.length ? path[0].profile : null;
   const blob = await buildReportPdf({
     estimate,
     report,
@@ -719,6 +734,7 @@ async function reportPdf(report) {
     logo,
     companyName,
     accent: accent || DEFAULT_ACCENT,
+    contact: profile && profile.contact ? profile.contact : null,
     groups: groupByZone(findings),
     zoneName,
   });
@@ -809,6 +825,7 @@ $('#restore-file').addEventListener('change', async (e) => {
     if (!ok) return;
   }
   await restoreBackup(backup, { replace: choice === 'replace' });
+  await lockMissingPrices();
   location.hash = '#/';
   await render();
   showToast(`Restored ${countsText(backup.counts)}.`, 'ok');
@@ -853,7 +870,7 @@ function renderEstimateBar(report, findings, list) {
   const bar = $('#estimate-bar');
   bar.hidden = !list;
   if (!list) return;
-  const est = buildEstimate(findings, list);
+  const est = buildEstimate(findings, list, report.prices);
   $('#estimate-total').textContent = formatMoney(est.total);
   const detail = $('#estimate-detail');
   detail.classList.toggle('warn', est.unpriced > 0);
@@ -863,8 +880,8 @@ function renderEstimateBar(report, findings, list) {
 }
 
 async function showEstimate(report) {
-  const [findings, list] = await Promise.all([db.listFindings(report.id), loadIssueList()]);
-  const est = buildEstimate(findings, list);
+  const [findings, list] = await Promise.all([db.listFindings(report.id), issueListFor(report.folderId)]);
+  const est = buildEstimate(findings, list, report.prices);
   $('#estimate-lines').replaceChildren(...est.lines.map((l) => {
     const li = document.createElement('li');
     const text = document.createElement('span');
@@ -884,10 +901,10 @@ async function showEstimate(report) {
   $('#estimate-sum').textContent = formatMoney(est.total);
   const warn = $('#estimate-unpriced');
   warn.hidden = !est.unpriced;
-  warn.textContent = `${plural(est.unpriced, 'finding')} without a price ${est.unpriced === 1 ? 'isn’t' : 'aren’t'} included. Set prices in Issues and prices, or type a price on the finding.`;
-  $('#estimate-prices').onclick = () => {
+  warn.textContent = `${plural(est.unpriced, 'finding')} without a price ${est.unpriced === 1 ? 'isn’t' : 'aren’t'} included. Set prices in Settings or the property profile, or type a price on the finding.`;
+  $('#estimate-refresh').onclick = async () => {
     $('#estimate-dialog').close('cancel');
-    location.hash = '#/issues';
+    await refreshPrices(report);
   };
   await showDialog($('#estimate-dialog'));
 }
@@ -972,23 +989,31 @@ function issueRow(group, issue) {
 }
 
 // Name and price dialog. Resolves with { name, price }, 'delete', or null.
-async function askIssue(title, issue) {
+// Resolves with { name, price }, 'delete', 'reset', or null.
+// opts: list (for duplicate names), nameLocked, canDelete, canReset, mainHint, renameHint.
+async function askIssue(title, issue, opts = {}) {
+  const { list = issueList, nameLocked = false, canDelete = !!issue, canReset = false, mainHint = '', renameHint = !!issue } = opts;
   $('#issue-dialog-title').textContent = title;
   $('#issue-name').value = issue ? issue.name : '';
+  $('#issue-name').readOnly = nameLocked;
   $('#issue-price').value = issue && issue.price != null ? issue.price.toFixed(2) : '';
-  $('#issue-delete').hidden = !issue;
-  $('#issue-rename-hint').hidden = !issue;
+  $('#issue-delete').hidden = !canDelete;
+  $('#issue-reset').hidden = !canReset;
+  $('#issue-rename-hint').hidden = !renameHint;
+  $('#issue-main-hint').hidden = !mainHint;
+  $('#issue-main-hint').textContent = mainHint;
   const err = $('#issue-error');
   err.hidden = true;
   $('#issue-delete').onclick = () => $('#issue-dialog').close('delete');
+  $('#issue-reset').onclick = () => $('#issue-dialog').close('reset');
   for (;;) {
     const result = await showDialog($('#issue-dialog'));
-    if (result === 'delete') return 'delete';
+    if (result === 'delete' || result === 'reset') return result;
     if (result !== 'ok') return null;
     const name = $('#issue-name').value.trim();
     const rawPrice = $('#issue-price').value.trim();
     const price = toPrice(rawPrice);
-    const taken = findIssue(issueList, name);
+    const taken = findIssue(list, name);
     let problem = '';
     if (!name) problem = 'Give the issue a name.';
     else if (taken && taken !== issue) problem = 'That issue is already on the list.';
@@ -1059,6 +1084,246 @@ $('#reset-issues').addEventListener('click', async () => {
   );
   if (!ok) return;
   await resetIssueList();
+  render();
+});
+
+// ---------- Property profiles ----------
+
+// The top-level property a folder belongs to (where its profile lives).
+async function propertyFolder(folderId) {
+  const path = await db.getPath(folderId);
+  return path[0] || null;
+}
+
+// The issue list for a folder: the main list with its property's changes applied.
+async function issueListFor(folderId) {
+  const [list, property] = await Promise.all([loadIssueList(), propertyFolder(folderId)]);
+  return effectiveList(list, property && property.profile);
+}
+
+async function disclaimerFor(property) {
+  if (property && property.profile && property.profile.disclaimer) return property.profile.disclaimer;
+  return (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+}
+
+// Merges changes into a property's profile; drops it entirely once nothing is left in it.
+async function saveProfile(folderId, changes) {
+  const folder = await db.getFolder(folderId);
+  const profile = { issues: {}, added: [], disclaimer: null, contact: null, ...(folder.profile || {}), ...changes };
+  const empty = !Object.keys(profile.issues).length && !profile.added.length && !profile.disclaimer && !profile.contact;
+  return db.updateFolder(folderId, { profile: empty ? null : profile });
+}
+
+// Reports keep the prices from the day they were made; this brings one up to today's.
+async function refreshPrices(report) {
+  const ok = await askConfirm(
+    'Use current prices',
+    `Update “${report.name}” to today’s prices for this property? Prices typed on individual findings stay as they are.`,
+    'Update'
+  );
+  if (!ok) return;
+  await db.updateReport(report.id, { prices: priceSnapshot(await issueListFor(report.folderId)) });
+  render();
+}
+
+// Reports made before prices were locked in (or restored from an older backup) get
+// today's prices once, so later price changes don't move them.
+async function lockMissingPrices() {
+  const reports = (await db.getAllReports()).filter((r) => !r.prices);
+  for (const r of reports) await db.updateReport(r.id, { prices: priceSnapshot(await issueListFor(r.folderId)) });
+}
+
+function renderProfileCard(property) {
+  const card = $('#profile-card');
+  card.hidden = !property;
+  if (!property) return;
+  const p = property.profile || {};
+  const parts = [];
+  if (p.contact && p.contact.name) parts.push(`Contact: ${p.contact.name}`);
+  const custom = Object.keys(p.issues || {}).length + (p.added || []).length;
+  if (custom) parts.push(`${plural(custom, 'custom issue')}`);
+  if (p.disclaimer) parts.push('own disclaimer');
+  $('#profile-card-detail').textContent = parts.length ? parts.join(' · ') : 'Contact, disclaimer, and issues and prices for this property.';
+}
+
+$('#profile-card').addEventListener('click', () => (location.hash = profileHref(current.id)));
+
+let profileList = null; // effective list on the profile screen
+
+async function renderProfile(id) {
+  const folder = await db.getFolder(id);
+  if (!folder) return (location.hash = '#/');
+  current = { kind: 'profile', id, record: folder };
+  setHeader({ title: 'Property profile', subtitle: folder.name, back: true });
+  const p = folder.profile || {};
+
+  const c = p.contact;
+  $('#profile-contact-name').textContent = c && c.name ? c.name : c ? 'Property contact' : 'Add a property contact';
+  $('#profile-contact-detail').textContent = c
+    ? [c.phone, c.email, c.address].filter(Boolean).join(' · ') || 'Tap to edit.'
+    : 'Shown on the cover of this property’s reports.';
+
+  const mainDisclaimer = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+  $('#profile-disclaimer-name').textContent = p.disclaimer ? 'Custom disclaimer for this property' : 'Using the main disclaimer';
+  $('#profile-disclaimer-text').textContent = p.disclaimer || mainDisclaimer;
+
+  profileList = effectiveList(await loadIssueList(), p);
+  $('#profile-issue-groups').replaceChildren(...profileList.groups.map((g) => {
+    const section = document.createElement('section');
+    const h = document.createElement('h2');
+    h.className = 'section-title';
+    h.textContent = g.name || 'Issues';
+    const ul = document.createElement('ul');
+    ul.className = 'list';
+    ul.append(...g.issues.map((issue) => profileIssueRow(g, issue)));
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'btn small outline add-issue';
+    add.textContent = '+ Add issue for this property';
+    add.addEventListener('click', () => addProfileIssue(g));
+    section.append(h, ul, add);
+    return section;
+  }));
+  showView('profile');
+}
+
+function profileIssueRow(group, issue) {
+  const li = document.createElement('li');
+  li.className = 'issue-row' + (issue.off ? ' off' : '');
+  const toggle = document.createElement('label');
+  toggle.className = 'issue-toggle';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = !issue.off;
+  box.setAttribute('aria-label', `Use ${issue.name} at this property`);
+  box.addEventListener('change', () => setProfileIssue(issue, { off: !box.checked }));
+  toggle.append(box);
+  const main = document.createElement('button');
+  main.type = 'button';
+  main.className = 'issue-main';
+  const name = document.createElement('span');
+  name.className = 'issue-name';
+  name.textContent = issue.name;
+  main.append(name);
+  if (issue.custom || issue.own) {
+    const tag = document.createElement('span');
+    tag.className = 'issue-tag' + (issue.own ? ' own' : '');
+    tag.textContent = issue.own ? 'This property' : 'Custom';
+    main.append(tag);
+  }
+  const price = document.createElement('span');
+  price.className = 'issue-price' + (issue.price == null ? ' none' : '');
+  price.textContent = issue.price == null ? 'No price' : formatMoney(issue.price);
+  main.append(price);
+  main.addEventListener('click', () => editProfileIssue(group, issue));
+  li.append(toggle, main);
+  return li;
+}
+
+// Records a change to one issue for this property. A main-list issue whose values end up
+// matching the main list again stops being custom.
+async function setProfileIssue(issue, changes) {
+  const folder = await db.getFolder(current.id);
+  const p = folder.profile || {};
+  if (issue.own) {
+    const added = (p.added || []).map((a) => (a.name === issue.name ? { ...a, ...changes } : a));
+    await saveProfile(current.id, { added });
+  } else {
+    const issues = { ...(p.issues || {}) };
+    const o = { ...(issues[issue.name] || {}), ...changes };
+    const main = findIssue(await loadIssueList(), issue.name);
+    if ('price' in o && main && o.price === main.price) delete o.price;
+    if ('off' in o && main && o.off === !!main.off) delete o.off;
+    if (Object.keys(o).length) issues[issue.name] = o;
+    else delete issues[issue.name];
+    await saveProfile(current.id, { issues });
+  }
+  render();
+}
+
+async function editProfileIssue(group, issue) {
+  const mainHint = issue.own
+    ? 'Only used at this property.'
+    : `Main list price: ${issue.custom ? (issue.mainPrice == null ? 'no price' : formatMoney(issue.mainPrice)) : issue.price == null ? 'no price' : formatMoney(issue.price)}. To rename this issue, use Settings.`;
+  const r = await askIssue(issue.name, issue, {
+    list: profileList,
+    nameLocked: !issue.own,
+    canDelete: !!issue.own,
+    canReset: !!issue.custom,
+    mainHint,
+    renameHint: false,
+  });
+  if (!r) return;
+  const folder = await db.getFolder(current.id);
+  const p = folder.profile || {};
+  if (r === 'reset') {
+    const issues = { ...(p.issues || {}) };
+    delete issues[issue.name];
+    await saveProfile(current.id, { issues });
+    return render();
+  }
+  if (r === 'delete') {
+    if (!(await askConfirm('Delete issue', `Remove “${issue.name}” from this property? Findings already saved with it keep it.`))) return;
+    await saveProfile(current.id, { added: (p.added || []).filter((a) => a.name !== issue.name) });
+    return render();
+  }
+  if (issue.own) {
+    const added = (p.added || []).map((a) => (a.name === issue.name ? { ...a, name: r.name, price: r.price } : a));
+    await saveProfile(current.id, { added });
+    return render();
+  }
+  await setProfileIssue(issue, { price: r.price });
+}
+
+async function addProfileIssue(group) {
+  const r = await askIssue(`Add to ${group.name || 'the list'} for this property`, null, { list: profileList, canDelete: false, renameHint: false, mainHint: 'Only used at this property.' });
+  if (!r || typeof r === 'string') return;
+  const folder = await db.getFolder(current.id);
+  const p = folder.profile || {};
+  await saveProfile(current.id, { added: [...(p.added || []), { group: group.name, name: r.name, price: r.price, off: false }] });
+  render();
+}
+
+$('#profile-contact').addEventListener('click', async () => {
+  const c = (current.record.profile && current.record.profile.contact) || {};
+  $('#contact-name').value = c.name || '';
+  $('#contact-phone').value = c.phone || '';
+  $('#contact-email').value = c.email || '';
+  $('#contact-address').value = c.address || '';
+  if ((await showDialog($('#contact-dialog'))) !== 'ok') return;
+  const contact = {
+    name: $('#contact-name').value.trim(),
+    phone: $('#contact-phone').value.trim(),
+    email: $('#contact-email').value.trim(),
+    address: $('#contact-address').value.trim(),
+  };
+  await saveProfile(current.id, { contact: Object.values(contact).some(Boolean) ? contact : null });
+  render();
+});
+
+$('#profile-disclaimer').addEventListener('click', async () => {
+  const p = current.record.profile || {};
+  const main = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+  const input = $('#disclaimer-input');
+  input.value = p.disclaimer || main;
+  $('#disclaimer-dialog .hint').textContent = 'Used on this property’s findings instead of the main disclaimer. Reset goes back to the main disclaimer.';
+  $('#disclaimer-reset').onclick = () => (input.value = main);
+  const result = await showDialog($('#disclaimer-dialog'));
+  $('#disclaimer-dialog .hint').textContent = DISCLAIMER_HINT;
+  if (result !== 'ok') return;
+  const text = input.value.trim();
+  await saveProfile(current.id, { disclaimer: text && text !== main ? text : null });
+  render();
+});
+
+$('#reset-profile').addEventListener('click', async () => {
+  const ok = await askConfirm(
+    'Reset property',
+    `Remove the contact, disclaimer and all custom issues and prices for “${current.record.name}”? It will use the main settings again. Existing reports keep their prices.`,
+    'Reset'
+  );
+  if (!ok) return;
+  await db.updateFolder(current.id, { profile: null });
   render();
 });
 
@@ -1262,12 +1527,14 @@ $('#disclaimer-edit').addEventListener('click', async () => {
   if ((await showDialog($('#disclaimer-dialog'))) !== 'ok') return;
   const text = input.value.trim();
   if (!text) return;
-  await db.setSetting('disclaimer', text);
+  // A property with its own disclaimer keeps edits there; otherwise it's the main one.
+  if (form.property && form.property.profile && form.property.profile.disclaimer) await saveProfile(form.property.id, { disclaimer: text });
+  else await db.setSetting('disclaimer', text);
   setDisclaimer(text, true); // editing it implies wanting it on this finding
 });
 
 async function fillIssues(selected) {
-  const list = (form.list = await loadIssueList());
+  const list = (form.list = await issueListFor(current.record.folderId));
   const placeholder = new Option('Choose an issue', '');
   placeholder.disabled = true;
   const options = [placeholder];
@@ -1293,12 +1560,11 @@ async function fillIssues(selected) {
 
 // The price field shows on reports with an estimate. Blank means "use the price list".
 function updatePriceHint() {
-  const issue = form.issue.value ? findIssue(form.list, form.issue.value) : null;
-  const listPrice = issue ? issue.price : null;
+  const listPrice = form.issue.value ? findingPrice({ issue: form.issue.value }, form.list, current.record.prices) : null;
   form.price.placeholder = listPrice != null ? formatMoney(listPrice) : 'No price';
   if (!form.issue.value) form.priceHint.textContent = 'Choose an issue to fill in its price.';
-  else if (listPrice != null) form.priceHint.textContent = `Price list: ${formatMoney(listPrice)}. Type a different price for just this finding.`;
-  else form.priceHint.textContent = 'This issue has no price yet. Type one here, or set it in Issues and prices on the home screen.';
+  else if (listPrice != null) form.priceHint.textContent = `This report’s price: ${formatMoney(listPrice)}. Type a different price for just this finding.`;
+  else form.priceHint.textContent = 'This issue has no price yet. Type one here, or set it in Settings or the property profile.';
 }
 form.issue.addEventListener('change', updatePriceHint);
 
@@ -1318,7 +1584,8 @@ async function openFindingForm(finding) {
   form.priceBox.hidden = !current.record.estimate;
   form.price.value = finding && finding.price != null ? finding.price.toFixed(2) : '';
   updatePriceHint();
-  const saved = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+  form.property = await propertyFolder(current.record.folderId);
+  const saved = await disclaimerFor(form.property);
   setDisclaimer(finding && finding.disclaimer ? finding.disclaimer : saved, !!(finding && finding.disclaimer));
   form.dialog.scrollTop = 0;
   const result = await showDialog(form.dialog);
@@ -1334,7 +1601,7 @@ async function openFindingForm(finding) {
     // so the finding follows later price list changes.
     price: form.priceBox.hidden ? (finding && finding.price != null ? finding.price : null) : toPrice(form.price.value),
   };
-  if (fields.price != null && fields.price === findingPrice({ issue: fields.issue }, form.list)) fields.price = null;
+  if (fields.price != null && fields.price === findingPrice({ issue: fields.issue }, form.list, current.record.prices)) fields.price = null;
   setPhoto(null);
   form.more = [];
   renderMorePhotos();
@@ -1371,6 +1638,7 @@ function showView(kind) {
   $('#report-view').hidden = kind !== 'report';
   $('#issues-view').hidden = kind !== 'issues';
   $('#settings-view').hidden = kind !== 'settings';
+  $('#profile-view').hidden = kind !== 'profile';
   $('#fab').hidden = kind !== 'folder';
   document.body.classList.toggle('in-report', kind === 'report');
 }
@@ -1387,7 +1655,9 @@ window.addEventListener('hashchange', () => {
 $('#back').addEventListener('click', () => {
   // Issues and prices opens from Settings or from a report's estimate, so go back to whichever.
   if (current.kind === 'issues' && visited.length > 1) return history.back();
-  const parent = current.kind === 'issues'
+  const parent = current.kind === 'profile'
+    ? folderHref(current.id)
+    : current.kind === 'issues'
     ? '#/settings'
     : current.kind === 'settings'
     ? '#/'
@@ -1422,4 +1692,4 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
 }
 
-render();
+lockMissingPrices().finally(render);

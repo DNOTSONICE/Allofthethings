@@ -228,18 +228,34 @@ export async function saveFinding(reportId, fields, id = null) {
   });
 }
 
-// When an issue is renamed in the issue list, findings saved with the old name follow it.
+// When an issue is renamed in the issue list, findings saved with the old name follow it,
+// as do property profiles and reports' saved prices.
 export async function renameIssue(from, to) {
-  const all = await getAll('findings');
   const now = Date.now();
+  const rekey = (obj) => {
+    if (!obj || !(from in obj)) return null;
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k === from ? to : k] = v;
+    return out;
+  };
   let n = 0;
-  for (const f of all) {
+  for (const f of await getAll('findings')) {
     if (f.issue !== from) continue;
     await put('findings', { ...f, issue: to, updatedAt: now }); // put() keeps the photo safe
     n++;
   }
+  for (const r of await getAll('reports')) {
+    const prices = rekey(r.prices);
+    if (prices) await put('reports', { ...r, prices, updatedAt: now });
+  }
+  for (const folder of await getAll('folders')) {
+    const issues = folder.profile && rekey(folder.profile.issues);
+    if (issues) await put('folders', { ...folder, profile: { ...folder.profile, issues }, updatedAt: now });
+  }
   return n;
 }
+
+export const getAllReports = () => getAll('reports');
 
 export async function deleteFinding(id) {
   const db = await openDb();

@@ -21,9 +21,19 @@ Tap the gear on the home screen, then **Issues and prices**, to turn issues on o
 
 The starting list is `data/issues.json`, as named groups (Broken heads, Valve issues, ...). An issue can be a plain name or `{ "name": "Broken 6\" pop-up", "price": 45 }` to give it a starting price. Changes to this file only show on phones that haven't edited their list (or after a reset).
 
+## Property profiles
+
+Each top-level property has a **Property profile** (card on the property's screen, or its ⋮ menu) with:
+
+- a property contact (name, phone, email, address), printed on the cover of its reports;
+- its own troubleshooting disclaimer, used instead of the main one;
+- its own issues and prices: change a price or turn an issue off (marked **Custom**), or add issues only this property uses. Anything not changed keeps following the main list in Settings. Issue names can only be changed in Settings.
+
+Folders and subdivisions inside a property use its profile. **Reset this property to the main settings** removes it.
+
 ## Repair estimates
 
-Each report has an optional **Include a repair estimate** checkbox (also in the report's ⋮ menu). With it on, each finding is priced from the price list (or a price typed on that finding), the report shows a running total, and the PDF adds the total to the cover and a Repair estimate page with quantity, unit price and amount per repair. Findings whose issue has no price are listed but left out of the total.
+Each report has an optional **Include a repair estimate** checkbox (also in the report's ⋮ menu). With it on, each finding is priced from the prices in effect when the report was created (main list plus the property's profile), or a price typed on that finding. Later price changes don't change existing reports; use **Use current prices** in the report's ⋮ menu or the estimate to update one, the report shows a running total, and the PDF adds the total to the cover and a Repair estimate page with quantity, unit price and amount per repair. Findings whose issue has no price are listed but left out of the total.
 
 ## Troubleshooting disclaimer
 
