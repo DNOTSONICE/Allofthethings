@@ -609,3 +609,4 @@ body:not(.in-report) .zone-panel { display: none; }
 }
 .issue-tag.own { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 #issue-dialog .btn.start + .btn.start { margin-left: 0; }
+.disclaimer-enabled { margin: 0 0 12px; }

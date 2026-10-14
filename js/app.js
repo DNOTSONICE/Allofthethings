@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -140,7 +140,7 @@ let companyLogoUrl = null;
 async function renderSettings() {
   current = { kind: 'settings', id: '', record: null };
   setHeader({ title: 'Settings', back: true });
-  await Promise.all([renderCompanyCard(), renderIssuesCard(), renderBackupCard(false)]);
+  await Promise.all([renderCompanyCard(), renderIssuesCard(), renderDisclaimerCard(), renderBackupCard(false)]);
   $('#settings-version').textContent = `App version ${APP_VERSION}`;
   showView('settings');
 }
@@ -1103,14 +1103,62 @@ async function issueListFor(folderId) {
 
 async function disclaimerFor(property) {
   if (property && property.profile && property.profile.disclaimer) return property.profile.disclaimer;
-  return (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+  return mainDisclaimer();
 }
+
+const mainDisclaimer = async () => (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
+// The disclaimer checkbox on findings can be turned off in Settings, and per property.
+const mainDisclaimerOn = async () => (await db.getSetting('disclaimerEnabled')) !== false;
+async function disclaimerOnFor(property) {
+  const own = property && property.profile ? property.profile.disclaimerOn : null;
+  return own != null ? own : mainDisclaimerOn();
+}
+
+// The disclaimer dialog with its on/off switch. Resolves with { on, text } or null.
+async function askDisclaimer({ title, hint, on, onLabel, text, resetTo }) {
+  const input = $('#disclaimer-input');
+  const box = $('#disclaimer-enabled');
+  $('#disclaimer-dialog h2').textContent = title;
+  $('#disclaimer-dialog .hint').textContent = hint;
+  $('#disclaimer-enabled-box').hidden = false;
+  $('#disclaimer-enabled-label').textContent = onLabel;
+  box.checked = on;
+  input.value = text;
+  $('#disclaimer-reset').onclick = () => (input.value = resetTo);
+  const result = await showDialog($('#disclaimer-dialog'));
+  $('#disclaimer-dialog h2').textContent = 'Troubleshooting disclaimer';
+  $('#disclaimer-dialog .hint').textContent = DISCLAIMER_HINT;
+  $('#disclaimer-enabled-box').hidden = true;
+  if (result !== 'ok') return null;
+  return { on: box.checked, text: input.value.trim() };
+}
+
+async function renderDisclaimerCard() {
+  const [on, text] = await Promise.all([mainDisclaimerOn(), mainDisclaimer()]);
+  $('#settings-disclaimer-name').textContent = `Troubleshooting disclaimer: ${on ? 'on' : 'off'}`;
+  $('#settings-disclaimer-detail').textContent = on ? text : 'Not offered on findings. Tap to turn it on or edit it.';
+}
+
+$('#settings-disclaimer').addEventListener('click', async () => {
+  const r = await askDisclaimer({
+    title: 'Troubleshooting disclaimer',
+    hint: 'When on, each finding has a checkbox to add this disclaimer. Properties can change it in their profile. Findings that already have a disclaimer keep it.',
+    on: await mainDisclaimerOn(),
+    onLabel: 'Offer the disclaimer on findings',
+    text: await mainDisclaimer(),
+    resetTo: DEFAULT_DISCLAIMER,
+  });
+  if (!r) return;
+  await db.setSetting('disclaimerEnabled', r.on);
+  if (r.text) await db.setSetting('disclaimer', r.text);
+  render();
+});
 
 // Merges changes into a property's profile; drops it entirely once nothing is left in it.
 async function saveProfile(folderId, changes) {
   const folder = await db.getFolder(folderId);
-  const profile = { issues: {}, added: [], disclaimer: null, contact: null, ...(folder.profile || {}), ...changes };
-  const empty = !Object.keys(profile.issues).length && !profile.added.length && !profile.disclaimer && !profile.contact;
+  const profile = { issues: {}, added: [], disclaimer: null, disclaimerOn: null, contact: null, ...(folder.profile || {}), ...changes };
+  const empty = !Object.keys(profile.issues).length && !profile.added.length && !profile.disclaimer && profile.disclaimerOn == null && !profile.contact;
   return db.updateFolder(folderId, { profile: empty ? null : profile });
 }
 
@@ -1142,7 +1190,8 @@ function renderProfileCard(property) {
   if (p.contact && p.contact.name) parts.push(`Contact: ${p.contact.name}`);
   const custom = Object.keys(p.issues || {}).length + (p.added || []).length;
   if (custom) parts.push(`${plural(custom, 'custom issue')}`);
-  if (p.disclaimer) parts.push('own disclaimer');
+  if (p.disclaimerOn === false) parts.push('disclaimer off');
+  else if (p.disclaimer || p.disclaimerOn === true) parts.push('own disclaimer');
   $('#profile-card-detail').textContent = parts.length ? parts.join(' · ') : 'Contact, disclaimer, and issues and prices for this property.';
 }
 
@@ -1163,9 +1212,12 @@ async function renderProfile(id) {
     ? [c.phone, c.email, c.address].filter(Boolean).join(' · ') || 'Tap to edit.'
     : 'Shown on the cover of this property’s reports.';
 
-  const mainDisclaimer = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
-  $('#profile-disclaimer-name').textContent = p.disclaimer ? 'Custom disclaimer for this property' : 'Using the main disclaimer';
-  $('#profile-disclaimer-text').textContent = p.disclaimer || mainDisclaimer;
+  const [mainText, mainOn] = await Promise.all([mainDisclaimer(), mainDisclaimerOn()]);
+  const on = p.disclaimerOn != null ? p.disclaimerOn : mainOn;
+  $('#profile-disclaimer-name').textContent = !on
+    ? `Off for this property${p.disclaimerOn == null ? ' (off in Settings)' : ''}`
+    : p.disclaimer ? 'Custom disclaimer for this property' : 'Using the main disclaimer';
+  $('#profile-disclaimer-text').textContent = on ? p.disclaimer || mainText : 'Findings here won’t offer the disclaimer. Tap to change.';
 
   profileList = effectiveList(await loadIssueList(), p);
   $('#profile-issue-groups').replaceChildren(...profileList.groups.map((g) => {
@@ -1303,16 +1355,21 @@ $('#profile-contact').addEventListener('click', async () => {
 
 $('#profile-disclaimer').addEventListener('click', async () => {
   const p = current.record.profile || {};
-  const main = (await db.getSetting('disclaimer')) || DEFAULT_DISCLAIMER;
-  const input = $('#disclaimer-input');
-  input.value = p.disclaimer || main;
-  $('#disclaimer-dialog .hint').textContent = 'Used on this property’s findings instead of the main disclaimer. Reset goes back to the main disclaimer.';
-  $('#disclaimer-reset').onclick = () => (input.value = main);
-  const result = await showDialog($('#disclaimer-dialog'));
-  $('#disclaimer-dialog .hint').textContent = DISCLAIMER_HINT;
-  if (result !== 'ok') return;
-  const text = input.value.trim();
-  await saveProfile(current.id, { disclaimer: text && text !== main ? text : null });
+  const [main, mainOn] = await Promise.all([mainDisclaimer(), mainDisclaimerOn()]);
+  const r = await askDisclaimer({
+    title: 'Disclaimer for this property',
+    hint: 'Used on this property’s findings instead of the main disclaimer. Reset goes back to the main wording.',
+    on: p.disclaimerOn != null ? p.disclaimerOn : mainOn,
+    onLabel: 'Offer the disclaimer at this property',
+    text: p.disclaimer || main,
+    resetTo: main,
+  });
+  if (!r) return;
+  // Only what differs from Settings is kept, so the rest keeps following it.
+  await saveProfile(current.id, {
+    disclaimer: r.text && r.text !== main ? r.text : null,
+    disclaimerOn: r.on === mainOn ? null : r.on,
+  });
   render();
 });
 
@@ -1587,6 +1644,8 @@ async function openFindingForm(finding) {
   form.property = await propertyFolder(current.record.folderId);
   const saved = await disclaimerFor(form.property);
   setDisclaimer(finding && finding.disclaimer ? finding.disclaimer : saved, !!(finding && finding.disclaimer));
+  // Hidden when turned off, unless this finding already has one (so it can still be removed).
+  $('#disclaimer-box').hidden = !(await disclaimerOnFor(form.property)) && !(finding && finding.disclaimer);
   form.dialog.scrollTop = 0;
   const result = await showDialog(form.dialog);
   const fields = {

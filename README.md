@@ -26,7 +26,7 @@ The starting list is `data/issues.json`, as named groups (Broken heads, Valve is
 Each top-level property has a **Property profile** (card on the property's screen, or its ⋮ menu) with:
 
 - a property contact (name, phone, email, address), printed on the cover of its reports;
-- its own troubleshooting disclaimer, used instead of the main one;
+- its own troubleshooting disclaimer, used instead of the main one, or the disclaimer turned on or off for just that property;
 - its own issues and prices: change a price or turn an issue off (marked **Custom**), or add issues only this property uses. Anything not changed keeps following the main list in Settings. Issue names can only be changed in Settings.
 
 Folders and subdivisions inside a property use its profile. **Reset this property to the main settings** removes it.
@@ -38,6 +38,8 @@ Each report has an optional **Include a repair estimate** checkbox (also in the 
 ## Troubleshooting disclaimer
 
 Each finding has an optional checkbox that adds a troubleshooting disclaimer, shown on the finding and in the PDF. The wording defaults to "*Troubleshooting required. Additional proposals may be required to complete this repair." and can be edited and saved from the finding form.
+
+The disclaimer can be turned off entirely in **Settings → Troubleshooting disclaimer**, where its wording can also be edited. When it is off, new findings don't offer it; findings that already have a disclaimer keep it. A property profile can turn it on or off for that property alone, overriding Settings.
 
 ## Run locally
 

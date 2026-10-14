@@ -90,6 +90,13 @@
         </span>
       </button>
 
+      <button id="settings-disclaimer" class="company-card">
+        <span class="company-logo-box backup-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="row-text">
+          <span id="settings-disclaimer-name" class="row-name">Troubleshooting disclaimer</span>
+          <span id="settings-disclaimer-detail" class="row-detail"></span>
+        </span>
+      </button>
       <button id="settings-backup-card" class="company-card">
         <span class="company-logo-box backup-icon">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18zm5-8v6m0-6l-2.5 2.5M12 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -296,6 +303,10 @@
     <form data-ok>
       <h2>Troubleshooting disclaimer</h2>
       <p class="hint">Saved for future findings. Findings that already have a disclaimer keep their wording unless you edit them.</p>
+      <label id="disclaimer-enabled-box" class="check disclaimer-enabled" hidden>
+        <input id="disclaimer-enabled" type="checkbox">
+        <span id="disclaimer-enabled-label">Offer the disclaimer on findings</span>
+      </label>
       <textarea id="disclaimer-input" class="field" rows="4" maxlength="500" required></textarea>
       <div class="actions">
         <button id="disclaimer-reset" type="button" class="btn start">Reset</button>
