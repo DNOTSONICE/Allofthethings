@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 17;
+const APP_VERSION = 18;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -684,6 +684,31 @@ async function deliverFile({ working, workingText, ready, failed, canOpen = fals
   await closed;
 }
 
+// The report's PDF: { blob, name }. Used by Export PDF and by backups.
+async function reportPdf(report) {
+  const [path, findings, logo, companyName, accent] = await Promise.all([
+    db.getPath(report.folderId),
+    db.listFindings(report.id),
+    db.getSetting('companyLogo'),
+    db.getSetting('companyName'),
+    db.getSetting('accentColor'),
+  ]);
+  const property = path.map((f) => f.name);
+  const estimate = report.estimate ? buildEstimate(findings, await loadIssueList()) : null;
+  const blob = await buildReportPdf({
+    estimate,
+    report,
+    property,
+    propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
+    logo,
+    companyName,
+    accent: accent || DEFAULT_ACCENT,
+    groups: groupByZone(findings),
+    zoneName,
+  });
+  return { blob, name: pdfFileName(property, report) };
+}
+
 function exportPdf(report) {
   return deliverFile({
     working: 'Making PDF…',
@@ -691,29 +716,7 @@ function exportPdf(report) {
     ready: 'PDF ready',
     failed: 'Couldn’t make the PDF',
     canOpen: true,
-    build: async () => {
-      const [path, findings, logo, companyName, accent] = await Promise.all([
-        db.getPath(report.folderId),
-        db.listFindings(report.id),
-        db.getSetting('companyLogo'),
-        db.getSetting('companyName'),
-        db.getSetting('accentColor'),
-      ]);
-      const property = path.map((f) => f.name);
-      const estimate = report.estimate ? buildEstimate(findings, await loadIssueList()) : null;
-      const blob = await buildReportPdf({
-        estimate,
-        report,
-        property,
-        propertyPhoto: path.length ? path[0].photo || null : null, // set on the top-level property folder
-        logo,
-        companyName,
-        accent: accent || DEFAULT_ACCENT,
-        groups: groupByZone(findings),
-        zoneName,
-      });
-      return { blob, name: pdfFileName(property, report) };
-    },
+    build: () => reportPdf(report),
   });
 }
 
@@ -735,12 +738,17 @@ async function renderBackupCard(show) {
 function backUp(folder = null) {
   return deliverFile({
     working: 'Making backup…',
-    workingText: 'Packing up your reports and photos.',
+    workingText: 'Packing up your reports, PDFs and photos.',
     ready: 'Backup ready',
     failed: 'Couldn’t make the backup',
     build: async () => {
-      const { blob, name, counts } = await createBackup(APP_VERSION, folder ? folder.id : null);
-      return { blob, name, detail: `Includes ${countsText(counts)}. Save it somewhere off this phone.` };
+      const { blob, name, counts, pdfsFailed } = await createBackup(APP_VERSION, folder ? folder.id : null, {
+        makePdf: reportPdf,
+        issueList: await loadIssueList(),
+        progress: (text) => ($('#pdf-text').textContent = `Packing up your reports, PDFs and photos. ${text}`),
+      });
+      const missing = pdfsFailed ? ` ${plural(pdfsFailed, 'PDF')} couldn’t be made and ${pdfsFailed === 1 ? 'was' : 'were'} left out.` : '';
+      return { blob, name, detail: `Includes ${countsText(counts)}.${missing} Save it to Files or iCloud Drive; tap it there to open it as a folder.` };
     },
   }).then(() => render());
 }

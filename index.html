@@ -331,11 +331,11 @@
   <dialog id="backup-dialog">
     <form method="dialog">
       <h2>Backup and restore</h2>
-      <p class="hint">Everything is stored only on this phone. A backup file holds all your properties, reports, findings and photos, plus your logo and settings. Save it to Files, a cloud drive or email so you don't lose your work, or use it to move everything to another phone.</p>
+      <p class="hint">Everything is stored only on this phone. <strong>Back up everything</strong> makes one .zip file. Save it to Files or iCloud Drive, then tap it there and it opens as a <strong>Wet Check</strong> folder with your settings, a folder for each property and subdivision, and every report's PDF and photos. Restore reads the same file back in, here or on another phone.</p>
       <p id="backup-last" class="backup-last"></p>
       <button id="backup-all" type="button" class="btn primary wide">Back up everything</button>
       <label class="btn outline wide">
-        <input id="restore-file" type="file" accept=".json,application/json" hidden>
+        <input id="restore-file" type="file" accept=".zip,.json,application/zip,application/json" hidden>
         Restore from a backup file
       </label>
       <p class="hint">To back up or share a single property, use ⋮ next to its folder.</p>

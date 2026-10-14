@@ -13,7 +13,7 @@ Done so far:
 - Company logo, name and PDF accent color (Settings, via the gear on the home screen; blue by default) and a property photo (top-level property folders) for the PDF cover page.
 - Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (underlined coordinates open Google Maps on any device), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
 - Settings (gear on the home screen): company logo, name and report color; issues and prices; backup and restore. The home screen keeps a backup reminder card.
-- Backup and restore: save a backup file of everything, or one property from its ⋮ menu, with photos, logo and settings included. Share it to Files, Drive or email. Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
+- Backup and restore: **Back up everything** (or one property from its ⋮ menu) makes a .zip that opens in the Files app as a `Wet Check` folder: `Settings/` (logo, settings, issues and prices as a spreadsheet), a folder per property and its folders, a subfolder per subdivision, and for each report its PDF and a `Photos/` folder. `App data/` holds what Restore reads, so the same .zip restores everything (older .json backups still restore too). Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
 
 ## Issues and prices
 
