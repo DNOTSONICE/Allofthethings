@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 14;
+const APP_VERSION = 15;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -507,6 +507,13 @@ function findingCard(finding, number, list = null) {
     img.alt = '';
     img.className = 'card-photo';
     btn.append(img);
+    const more = (finding.morePhotos || []).length;
+    if (more) {
+      const count = document.createElement('span');
+      count.className = 'photo-count';
+      count.textContent = `+${plural(more, 'photo')}`;
+      btn.append(count);
+    }
   }
   const body = document.createElement('div');
   body.className = 'card-body';
@@ -1033,6 +1040,8 @@ const form = {
   disclaimer: '', // wording that goes on this finding if the box is checked
   del: $('#finding-delete'),
   photo: null, // compressed Blob
+  more: [], // extra photos (compressed Blobs), shown after the main one
+  moreUrls: [],
   photoStamp: null, // { takenAt, lat, lon, accuracy, city }
   busy: false,
   locating: null, // promise while waiting on GPS for the current photo
@@ -1046,8 +1055,61 @@ function setPhoto(blob, stamp = null) {
   form.img.removeAttribute('src');
   if (blob) form.img.src = URL.createObjectURL(blob);
   form.preview.hidden = !blob;
+  $('#more-photo-buttons').hidden = !blob || form.more.length >= MAX_MORE_PHOTOS;
   setStamp(stamp);
 }
+
+const MAX_MORE_PHOTOS = 8;
+
+function renderMorePhotos() {
+  for (const u of form.moreUrls) URL.revokeObjectURL(u);
+  form.moreUrls = [];
+  const list = $('#more-photo-list');
+  list.replaceChildren(...form.more.map((blob, i) => {
+    const li = document.createElement('li');
+    const img = document.createElement('img');
+    const url = URL.createObjectURL(blob);
+    form.moreUrls.push(url);
+    img.src = url;
+    img.alt = `Photo ${i + 2}`;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'thumb-remove';
+    del.setAttribute('aria-label', `Remove photo ${i + 2}`);
+    del.textContent = '×';
+    del.addEventListener('click', () => {
+      form.more.splice(i, 1);
+      renderMorePhotos();
+    });
+    li.append(img, del);
+    return li;
+  }));
+  list.hidden = form.more.length === 0;
+  $('#more-photo-buttons').hidden = !form.photo || form.more.length >= MAX_MORE_PHOTOS;
+}
+
+async function onMorePhotos(e) {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length) return;
+  const room = MAX_MORE_PHOTOS - form.more.length;
+  showPhotoError(files.length > room ? `Up to ${MAX_MORE_PHOTOS + 1} photos per finding. Only the first ${room} were added.` : '');
+  form.busy = true;
+  try {
+    for (const file of files.slice(0, room)) {
+      try {
+        form.more.push(await compressPhoto(file));
+      } catch {
+        showPhotoError('A photo couldn’t be read and was skipped.');
+      }
+      renderMorePhotos();
+    }
+  } finally {
+    form.busy = false;
+  }
+}
+$('#more-camera').addEventListener('change', onMorePhotos);
+$('#more-library').addEventListener('change', onMorePhotos);
 
 function setStamp(stamp) {
   form.photoStamp = stamp;
@@ -1203,6 +1265,8 @@ async function openFindingForm(finding) {
   showLocStatus('');
   form.pick++;
   form.locating = null;
+  form.more = finding && finding.morePhotos ? [...finding.morePhotos] : [];
+  renderMorePhotos();
   setPhoto(finding ? finding.photo : null, finding ? finding.stamp || null : null);
   await fillIssues(finding ? finding.issue : '');
   form.zone.value = finding ? finding.zone : zoneOf(current.record);
@@ -1216,6 +1280,7 @@ async function openFindingForm(finding) {
   const result = await showDialog(form.dialog);
   const fields = {
     photo: form.photo,
+    morePhotos: form.more.slice(),
     stamp: form.photoStamp,
     issue: form.issue.value,
     zone: form.zone.value.trim(),
@@ -1227,6 +1292,8 @@ async function openFindingForm(finding) {
   };
   if (fields.price != null && fields.price === findingPrice({ issue: fields.issue }, form.list)) fields.price = null;
   setPhoto(null);
+  form.more = [];
+  renderMorePhotos();
   return { result, fields };
 }
 

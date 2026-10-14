@@ -76,7 +76,10 @@ async function freshBlob(b) {
 
 async function detachBlobs(record) {
   const out = { ...record };
-  for (const [k, v] of Object.entries(out)) if (v instanceof Blob) out[k] = await freshBlob(v);
+  for (const [k, v] of Object.entries(out)) {
+    if (v instanceof Blob) out[k] = await freshBlob(v);
+    else if (Array.isArray(v) && v.some((x) => x instanceof Blob)) out[k] = await Promise.all(v.map((x) => (x instanceof Blob ? freshBlob(x) : x)));
+  }
   return out;
 }
 

@@ -5,13 +5,13 @@ A mobile-first installable web app (PWA) for irrigation wet checks. Everything i
 Done so far:
 - Folder manager for properties: create, rename, delete and nest folders.
 - Wet check reports inside folders, each with a name and date.
-- Findings in a report: a photo (camera or library, compressed to 1600px JPEG on save), an issue, a zone and an optional note.
+- Findings in a report: a main photo (camera or library, compressed to 1600px JPEG on save) plus up to 8 more photos, an issue, a zone and an optional note. Extra photos print in rows of three under the finding in the PDF.
 - Location box under the note on each finding: GPS coordinates with Map and Copy buttons, plus city, accuracy and time (looked up via BigDataCloud when online, filled in later if taken offline). Camera photos use the phone's location; library photos use what the photo itself recorded.
 - Coordinates list for a report (report menu): every finding's coordinates, with Map, Copy and Copy all.
 - Zone-by-zone workflow: each report has a current zone (bottom bar, with next/previous buttons) that new findings go into, and findings are grouped by zone.
 
 - Company logo, name and PDF accent color (home screen; blue by default) and a property photo (top-level property folders) for the PDF cover page.
-- Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (links open the map), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
+- Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (underlined coordinates open Google Maps on any device), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
 - Backup and restore (home screen): save a backup file of everything, or one property from its ⋮ menu, with photos, logo and settings included. Share it to Files, Drive or email. Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
 
 ## Issues and prices

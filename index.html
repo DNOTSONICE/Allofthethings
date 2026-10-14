@@ -180,6 +180,17 @@
         </label>
       </div>
       <p id="photo-error" class="error" hidden></p>
+      <ul id="more-photo-list" class="thumbs" hidden></ul>
+      <div id="more-photo-buttons" class="photo-buttons more-buttons" hidden>
+        <label class="btn small outline">
+          <input id="more-camera" type="file" accept="image/*" capture="environment" hidden>
+          + Take another photo
+        </label>
+        <label class="btn small outline">
+          <input id="more-library" type="file" accept="image/*" multiple hidden>
+          + Add from library
+        </label>
+      </div>
 
       <label class="label" for="finding-issue">Issue</label>
       <select id="finding-issue" class="field" required></select>

@@ -1,6 +1,6 @@
 // Builds the wet check report PDF on the device (no upload), using jsPDF.
 
-import { coordsText, mapUrl, stampDetails } from './location.js';
+import { coordsText, stampDetails } from './location.js';
 import { formatDate } from './ui.js';
 import { formatMoney } from './issues.js';
 
@@ -61,6 +61,10 @@ async function loadImage(doc, blob) {
     return null;
   }
 }
+
+// Google Maps link for the PDF: it opens on any phone or computer the report is sent to
+// (the Google Maps app if installed, otherwise the browser).
+const pdfMapUrl = (stamp) => `https://www.google.com/maps/search/?api=1&query=${stamp.lat.toFixed(6)},${stamp.lon.toFixed(6)}`;
 
 // Letter size, in points (72 per inch).
 const PAGE_W = 612;
@@ -128,6 +132,18 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     color(c);
     doc.text(text.toUpperCase(), x, yy, { charSpace: 1.2, ...opts });
   };
+
+  // Underlined, tappable text. jsPDF's textWithLink writes the tap area upside down and only
+  // as tall as the letters, which some viewers (Apple's among them) ignore, so draw it here
+  // with a little padding. A negative height gives a rectangle in the normal orientation.
+  function linkText(text, x, baseline, url) {
+    const size = doc.getFontSize();
+    const w = doc.getTextWidth(text);
+    doc.text(text, x, baseline);
+    stroke(ACCENT, 0.6);
+    doc.line(x, baseline + 1.6, x + w, baseline + 1.6);
+    doc.link(x - 3, baseline + 5, w + 6, -(size + 8), { url });
+  }
 
   function newPage() {
     doc.addPage();
@@ -339,7 +355,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       lines.push({ gap: 10, rule: true });
       lines.push({ label: 'Location', size: 7.5 });
       if (f.stamp && f.stamp.lat != null) {
-        add('bold', 11, ACCENT, coordsText(f.stamp), { link: mapUrl(f.stamp) });
+        add('bold', 11, ACCENT, coordsText(f.stamp), { link: pdfMapUrl(f.stamp) });
         tableRows.push({ zone: zoneName(zone), n: number, issue: f.issue, stamp: f.stamp });
       } else {
         add('normal', 10.5, MUTED, 'No location recorded');
@@ -386,12 +402,41 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
         font(l.style, l.size);
         color(l.c);
         const baseline = ty + l.size;
-        if (l.link) doc.textWithLink(l.text, l.x, baseline, { url: l.link });
+        if (l.link) linkText(l.text, l.x, baseline, l.link);
         else doc.text(l.text, l.x, baseline);
         ty += lineHeight(l.size);
       }
 
-      y += rowH + GAP;
+      y += rowH;
+
+      // More photos: a row of three under the finding.
+      const more = [];
+      for (const blob of f.morePhotos || []) {
+        const m = await loadImage(doc, blob);
+        if (m) more.push(m);
+      }
+      const cellW = (CONTENT_W - 2 * 10) / 3;
+      const cellH = 150;
+      for (let r = 0; r < more.length; r += 3) {
+        const row = more.slice(r, r + 3).map((m) => {
+          const s = Math.min(cellW / m.w, cellH / m.h);
+          return { ...m, dw: m.w * s, dh: m.h * s };
+        });
+        const h = Math.max(...row.map((m) => m.dh));
+        if (y + 10 + h > bodyBottom) {
+          newPage();
+          zoneHeading(zone, items.length, true);
+        } else y += 10;
+        row.forEach((m, k) => {
+          const x = MARGIN + k * (cellW + 10);
+          doc.addImage(m.data, m.format, x, y, m.dw, m.dh);
+          stroke(LINE, 0.5);
+          doc.rect(x, y, m.dw, m.dh, 'S');
+        });
+        y += h;
+      }
+
+      y += GAP;
       if (i < items.length - 1) {
         stroke(LINE, 0.75);
         doc.line(MARGIN, y - GAP / 2, PAGE_W - MARGIN, y - GAP / 2);
@@ -448,7 +493,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       if (r.stamp) {
         font('bold', 9.5);
         color(ACCENT);
-        doc.textWithLink(coordsText(r.stamp), cols[3].x, base, { url: mapUrl(r.stamp) });
+        linkText(coordsText(r.stamp), cols[3].x, base, pdfMapUrl(r.stamp));
       } else {
         color(MUTED);
         doc.text('—', cols[3].x, base);
