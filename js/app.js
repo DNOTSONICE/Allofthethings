@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 16;
+const APP_VERSION = 17;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -40,11 +40,13 @@ const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" c
 // #/            top-level folders
 // #/f/<id>      a folder
 // #/r/<id>      a report
+// #/settings    settings: company, issues and prices, backup
 // #/issues      the issue list and prices
 // Using the URL hash means the phone's back button works.
 
 function route() {
   if (location.hash === '#/issues') return { kind: 'issues', id: '' };
+  if (location.hash === '#/settings') return { kind: 'settings', id: '' };
   const m = location.hash.match(/^#\/([fr])\/(.+)$/);
   if (!m) return { kind: 'folder', id: db.ROOT };
   return { kind: m[1] === 'r' ? 'report' : 'folder', id: decodeURIComponent(m[2]) };
@@ -60,6 +62,7 @@ async function render() {
   const r = route();
   if (r.kind === 'report') await renderReport(r.id);
   else if (r.kind === 'issues') await renderIssues();
+  else if (r.kind === 'settings') await renderSettings();
   else await renderFolder(r.id);
   // Start at the top when moving to a different screen, but not when refreshing the same one.
   const screen = `${r.kind}:${r.id}`;
@@ -67,7 +70,8 @@ async function render() {
   lastScreen = screen;
 }
 
-function setHeader({ title, subtitle = '', crumbs = [], back = false, more = false }) {
+function setHeader({ title, subtitle = '', crumbs = [], back = false, more = false, settings = false }) {
+  $('#settings-btn').hidden = !settings;
   $('#title').textContent = title;
   $('#subtitle').textContent = subtitle;
   $('#subtitle').hidden = !subtitle;
@@ -101,6 +105,7 @@ async function renderFolder(id) {
     title: here ? here.name : 'Properties',
     crumbs: path.length >= 2 ? crumbsFor(path.slice(0, -1)) : [],
     back: !!here,
+    settings: !here,
   });
   $('#fab-label').textContent = 'New';
 
@@ -112,9 +117,7 @@ async function renderFolder(id) {
   $('#folder-empty').innerHTML = here
     ? 'Nothing here yet. Tap <strong>New</strong> to add a wet check report or a folder.'
     : 'No properties yet. Tap <strong>New</strong> to add a folder for one.';
-  await renderCompanyCard(!here);
   await renderBackupCard(!here);
-  await renderIssuesCard(!here);
   renderPropertyPhoto(path.length === 1 ? here : null);
   $('#app-version').hidden = !!here;
   $('#app-version').textContent = `App version ${APP_VERSION}`;
@@ -125,10 +128,21 @@ async function renderFolder(id) {
 
 let companyLogoUrl = null;
 
-async function renderCompanyCard(show) {
+// ---------- Settings screen ----------
+
+async function renderSettings() {
+  current = { kind: 'settings', id: '', record: null };
+  setHeader({ title: 'Settings', back: true });
+  await Promise.all([renderCompanyCard(), renderIssuesCard(), renderBackupCard(false)]);
+  $('#settings-version').textContent = `App version ${APP_VERSION}`;
+  showView('settings');
+}
+
+$('#settings-btn').addEventListener('click', () => (location.hash = '#/settings'));
+
+async function renderCompanyCard() {
   const card = $('#company-card');
-  card.hidden = !show;
-  if (!show) return;
+  card.hidden = false;
   const [logo, name] = await Promise.all([db.getSetting('companyLogo'), db.getSetting('companyName')]);
   if (companyLogoUrl) URL.revokeObjectURL(companyLogoUrl);
   companyLogoUrl = logo ? URL.createObjectURL(logo) : null;
@@ -707,14 +721,15 @@ function exportPdf(report) {
 
 const countsText = (c) => [plural(c.folders, 'folder'), plural(c.reports, 'report'), plural(c.findings, 'finding')].join(', ');
 
+// The home screen keeps a backup reminder card; Settings has the same entry.
 async function renderBackupCard(show) {
   $('#backup-card').hidden = !show;
-  if (!show) return;
   const last = await db.getSetting('lastBackupAt');
-  const detail = $('#backup-card-detail');
-  detail.textContent = last ? `Last backup: ${formatTime(last)}` : 'Last backup: never. Tap to back up.';
-  // Nudge when it's been more than a week.
-  detail.classList.toggle('warn', !last || Date.now() - last > 7 * 24 * 3600 * 1000);
+  for (const detail of [$('#backup-card-detail'), $('#settings-backup-detail')]) {
+    detail.textContent = last ? `Last backup: ${formatTime(last)}` : 'Last backup: never. Tap to back up.';
+    // Nudge when it's been more than a week.
+    detail.classList.toggle('warn', !last || Date.now() - last > 7 * 24 * 3600 * 1000);
+  }
 }
 
 function backUp(folder = null) {
@@ -730,11 +745,13 @@ function backUp(folder = null) {
   }).then(() => render());
 }
 
-$('#backup-card').addEventListener('click', async () => {
+async function openBackupDialog() {
   const last = await db.getSetting('lastBackupAt');
   $('#backup-last').textContent = last ? `Last full backup: ${formatTime(last)}` : 'No full backup made on this phone yet.';
   showDialog($('#backup-dialog'));
-});
+}
+$('#backup-card').addEventListener('click', openBackupDialog);
+$('#settings-backup-card').addEventListener('click', openBackupDialog);
 
 $('#backup-all').addEventListener('click', () => {
   $('#backup-dialog').close('cancel');
@@ -855,9 +872,8 @@ $('#estimate-bar').addEventListener('click', () => showEstimate(current.record))
 
 // ---------- Issues and prices ----------
 
-async function renderIssuesCard(show) {
-  $('#issues-card').hidden = !show;
-  if (!show) return;
+async function renderIssuesCard() {
+  $('#issues-card').hidden = false;
   const list = await loadIssueList();
   const all = list.groups.flatMap((g) => g.issues);
   const on = all.filter((i) => !i.off).length;
@@ -1330,6 +1346,7 @@ function showView(kind) {
   $('#folder-view').hidden = kind !== 'folder';
   $('#report-view').hidden = kind !== 'report';
   $('#issues-view').hidden = kind !== 'issues';
+  $('#settings-view').hidden = kind !== 'settings';
   $('#fab').hidden = kind !== 'folder';
   document.body.classList.toggle('in-report', kind === 'report');
 }
@@ -1344,7 +1361,11 @@ window.addEventListener('hashchange', () => {
 });
 
 $('#back').addEventListener('click', () => {
+  // Issues and prices opens from Settings or from a report's estimate, so go back to whichever.
+  if (current.kind === 'issues' && visited.length > 1) return history.back();
   const parent = current.kind === 'issues'
+    ? '#/settings'
+    : current.kind === 'settings'
     ? '#/'
     : current.kind === 'report'
     ? folderHref(current.record.folderId)

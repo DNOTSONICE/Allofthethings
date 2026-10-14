@@ -444,7 +444,7 @@ body:not(.in-report) .zone-panel { display: none; }
   place-items: center;
   overflow: hidden;
 }
-.company-logo-box.empty { border-style: dashed; background: var(--bg); }
+.company-logo-box.empty { border-style: dashed; background: var(--bg); margin: 0; padding: 0; }
 .company-logo-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
 .logo-preview {

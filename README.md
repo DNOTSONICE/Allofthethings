@@ -10,13 +10,14 @@ Done so far:
 - Coordinates list for a report (report menu): every finding's coordinates, with Map, Copy and Copy all.
 - Zone-by-zone workflow: each report has a current zone (bottom bar, with next/previous buttons) that new findings go into, and findings are grouped by zone.
 
-- Company logo, name and PDF accent color (home screen; blue by default) and a property photo (top-level property folders) for the PDF cover page.
+- Company logo, name and PDF accent color (Settings, via the gear on the home screen; blue by default) and a property photo (top-level property folders) for the PDF cover page.
 - Export PDF (report screen): a cover page, then property, date, findings by zone with photo, issue, zone, note and location (underlined coordinates open Google Maps on any device), plus a coordinates list. Built on the device with jsPDF (js/vendor), so it works offline.
-- Backup and restore (home screen): save a backup file of everything, or one property from its ⋮ menu, with photos, logo and settings included. Share it to Files, Drive or email. Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
+- Settings (gear on the home screen): company logo, name and report color; issues and prices; backup and restore. The home screen keeps a backup reminder card.
+- Backup and restore: save a backup file of everything, or one property from its ⋮ menu, with photos, logo and settings included. Share it to Files, Drive or email. Restore adds to what's on the phone (the newer copy of anything wins) or, for a full backup, replaces everything after a confirmation.
 
 ## Issues and prices
 
-Tap **Issues and prices** on the home screen to turn issues on or off, rename them, add your own issues or groups, and set a price for each. Renaming an issue also renames it on findings already saved. Your list is saved on the phone and included in backups; **Reset to the starting list** goes back to the original.
+Tap the gear on the home screen, then **Issues and prices**, to turn issues on or off, rename them, add your own issues or groups, and set a price for each. Renaming an issue also renames it on findings already saved. Your list is saved on the phone and included in backups; **Reset to the starting list** goes back to the original.
 
 The starting list is `data/issues.json`, as named groups (Broken heads, Valve issues, ...). An issue can be a plain name or `{ "name": "Broken 6\" pop-up", "price": 45 }` to give it a starting price. Changes to this file only show on phones that haven't edited their list (or after a reset).
 

@@ -23,6 +23,9 @@
       <h1 id="title">Properties</h1>
       <div id="subtitle" class="subtitle" hidden></div>
     </div>
+    <button id="settings-btn" class="icon-btn end" aria-label="Settings" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    </button>
     <button id="header-more" class="icon-btn end" aria-label="Report options" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg>
     </button>
@@ -30,24 +33,6 @@
 
   <main>
     <section id="folder-view" hidden>
-      <button id="company-card" class="company-card" hidden>
-        <span id="company-logo-box" class="company-logo-box"><img id="company-card-img" alt=""></span>
-        <span class="row-text">
-          <span id="company-card-name" class="row-name">Company logo</span>
-          <span class="row-detail">Logo, name and report color for every PDF. Tap to change.</span>
-        </span>
-      </button>
-
-      <button id="issues-card" class="company-card" hidden>
-        <span class="company-logo-box backup-icon">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </span>
-        <span class="row-text">
-          <span class="row-name">Issues and prices</span>
-          <span id="issues-card-detail" class="row-detail">Edit the issue list and repair prices.</span>
-        </span>
-      </button>
-
       <button id="backup-card" class="company-card" hidden>
         <span class="company-logo-box backup-icon">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18zm5-8v6m0-6l-2.5 2.5M12 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -76,6 +61,37 @@
       <ul id="report-list" class="list"></ul>
       <p id="folder-empty" class="empty" hidden>Nothing here yet. Tap <strong>New</strong> to add a folder or a wet check report.</p>
       <p id="app-version" class="version" hidden></p>
+    </section>
+
+    <section id="settings-view" hidden>
+      <button id="company-card" class="company-card" hidden>
+        <span id="company-logo-box" class="company-logo-box"><img id="company-card-img" alt=""></span>
+        <span class="row-text">
+          <span id="company-card-name" class="row-name">Company logo</span>
+          <span class="row-detail">Logo, name and report color for every PDF. Tap to change.</span>
+        </span>
+      </button>
+
+      <button id="issues-card" class="company-card" hidden>
+        <span class="company-logo-box backup-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </span>
+        <span class="row-text">
+          <span class="row-name">Issues and prices</span>
+          <span id="issues-card-detail" class="row-detail">Edit the issue list and repair prices.</span>
+        </span>
+      </button>
+
+      <button id="settings-backup-card" class="company-card">
+        <span class="company-logo-box backup-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18zm5-8v6m0-6l-2.5 2.5M12 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="row-text">
+          <span class="row-name">Backup and restore</span>
+          <span id="settings-backup-detail" class="row-detail">Last backup: never</span>
+        </span>
+      </button>
+      <p id="settings-version" class="version"></p>
     </section>
 
     <section id="issues-view" hidden>
