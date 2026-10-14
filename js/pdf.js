@@ -31,14 +31,34 @@ function blobToDataUrl(blob) {
   });
 }
 
-// jsPDF needs to be told the image format.
-const imageFormat = (blob) => (blob.type === 'image/png' ? 'PNG' : 'JPEG');
-
-async function imageSize(blob) {
-  const bmp = await createImageBitmap(blob);
-  const size = { w: bmp.width, h: bmp.height };
-  if (bmp.close) bmp.close();
-  return size;
+// Reads a stored photo into what jsPDF needs. The size comes from the image file's own header
+// (jsPDF's getImageProperties), not createImageBitmap, which Safari sometimes refuses for photos
+// stored in IndexedDB. Returns null if the photo can't be read, so one bad photo
+// doesn't stop the whole export.
+async function loadImage(doc, blob) {
+  try {
+    const data = await blobToDataUrl(blob);
+    let w;
+    let h;
+    let format;
+    try {
+      const props = doc.getImageProperties(data);
+      ({ width: w, height: h } = props);
+      format = props.fileType === 'PNG' ? 'PNG' : 'JPEG';
+    } catch {
+      const img = new Image();
+      img.src = data;
+      await img.decode();
+      w = img.naturalWidth;
+      h = img.naturalHeight;
+      format = data.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+    }
+    if (!w || !h) return null;
+    return { data, w, h, format };
+  } catch (err) {
+    console.warn('Skipped a photo in the PDF', err);
+    return null;
+  }
 }
 
 // Letter size, in points (72 per inch).
@@ -120,10 +140,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   const located = groups.reduce((n, [, items]) => n + items.filter((f) => f.stamp && f.stamp.lat != null).length, 0);
 
   let logoImg = null;
-  if (logo) {
-    const { w, h } = await imageSize(logo);
-    logoImg = { data: await blobToDataUrl(logo), w, h, format: imageFormat(logo) };
-  }
+  if (logo) logoImg = await loadImage(doc, logo);
   const fitLogo = (maxW, maxH) => {
     const s = Math.min(maxW / logoImg.w, maxH / logoImg.h);
     return { w: logoImg.w * s, h: logoImg.h * s };
@@ -175,14 +192,15 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   const bottomH = statsH + 26 + (logoBox ? logoBox.h + 34 : companyName ? 40 : 0);
   const bottomTop = PAGE_H - MARGIN - bottomH;
 
-  if (propertyPhoto) {
-    const { w, h } = await imageSize(propertyPhoto);
+  const coverImg = propertyPhoto ? await loadImage(doc, propertyPhoto) : null;
+  if (coverImg) {
+    const { w, h } = coverImg;
     const maxH = bottomTop - y - 22;
     const s = Math.min(CONTENT_W / w, maxH / h);
     const pw = w * s;
     const ph = h * s;
     const px = MARGIN + (CONTENT_W - pw) / 2;
-    doc.addImage(await blobToDataUrl(propertyPhoto), imageFormat(propertyPhoto), px, y, pw, ph);
+    doc.addImage(coverImg.data, coverImg.format, px, y, pw, ph);
     // Accent underline on the photo, like a caption rule.
     fill(ACCENT);
     doc.rect(px, y + ph, pw, 4, 'F');
@@ -279,10 +297,10 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       const number = i + 1;
 
       let photo = null;
-      if (f.photo) {
-        const { w, h } = await imageSize(f.photo);
-        const s = Math.min(PHOTO_W / w, PHOTO_MAX_H / h);
-        photo = { data: await blobToDataUrl(f.photo), w: w * s, h: h * s };
+      const img = f.photo ? await loadImage(doc, f.photo) : null;
+      if (img) {
+        const s = Math.min(PHOTO_W / img.w, PHOTO_MAX_H / img.h);
+        photo = { data: img.data, format: img.format, w: img.w * s, h: img.h * s };
       }
 
       const textX = MARGIN + (photo ? PHOTO_W + GAP + 4 : 0);
@@ -327,7 +345,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       }
 
       if (photo) {
-        doc.addImage(photo.data, 'JPEG', MARGIN, y, photo.w, photo.h);
+        doc.addImage(photo.data, photo.format, MARGIN, y, photo.w, photo.h);
         stroke(LINE, 0.5);
         doc.rect(MARGIN, y, photo.w, photo.h, 'S');
       }
