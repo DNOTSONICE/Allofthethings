@@ -184,6 +184,16 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     doc.text(l, MARGIN, y + 26);
     y += lineHeight(28);
   }
+  // Subdivision, when the report has one, under the property name.
+  if (report.subdivision) {
+    font('normal', 14);
+    color(MUTED);
+    for (const l of doc.splitTextToSize(report.subdivision, CONTENT_W)) {
+      doc.text(l, MARGIN, y + 20);
+      y += lineHeight(14);
+    }
+    y += 4;
+  }
   // Short accent rule under the title.
   fill(ACCENT);
   doc.rect(MARGIN, y + 8, 56, 3, 'F');
@@ -607,7 +617,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     }
     font('normal', 8.5);
     color(MUTED);
-    doc.text(`${propertyName}  ·  ${formatDate(report.date)}`, PAGE_W - MARGIN, MARGIN + 8, { align: 'right' });
+    doc.text(`${[propertyName, report.subdivision].filter(Boolean).join(', ')}  ·  ${formatDate(report.date)}`, PAGE_W - MARGIN, MARGIN + 8, { align: 'right' });
     stroke(ACCENT, 1.2);
     doc.line(MARGIN, MARGIN + 18, PAGE_W - MARGIN, MARGIN + 18);
 

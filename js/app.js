@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 
@@ -302,11 +302,13 @@ function folderRow(folder) {
   });
 }
 
+const reportDetail = (r) => [formatDate(r.date), r.subdivision].filter(Boolean).join(' · ');
+
 function reportRow(report) {
   return row({
     icon: REPORT_ICON,
     name: report.name,
-    detail: formatDate(report.date),
+    detail: reportDetail(report),
     href: reportHref(report.id),
     menuLabel: `Options for ${report.name}`,
     onMenu: () => reportMenu(report),
@@ -376,7 +378,7 @@ async function newInFolder() {
     const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate });
     if (!details) return;
     await db.setSetting('estimateDefault', details.estimate);
-    const report = await db.createReport(folderId, details.name, details.date, { estimate: details.estimate });
+    const report = await db.createReport(folderId, details.name, details.date, { estimate: details.estimate, subdivision: details.subdivision });
     location.hash = reportHref(report.id);
   }
 }
@@ -421,7 +423,7 @@ async function renderReport(id) {
 
   setHeader({
     title: report.name,
-    subtitle: formatDate(report.date),
+    subtitle: reportDetail(report),
     crumbs: crumbsFor(path),
     back: true,
     more: true,
@@ -776,12 +778,14 @@ async function askReportDetails(title, submitLabel, initial) {
   $('#report-submit').textContent = submitLabel;
   $('#report-name').value = initial.name;
   $('#report-date').value = initial.date;
+  $('#report-subdivision').value = initial.subdivision || '';
   $('#report-estimate').checked = !!initial.estimate;
   const result = await showDialog($('#report-dialog'));
   const name = $('#report-name').value.trim();
   const date = $('#report-date').value;
   const estimate = $('#report-estimate').checked;
-  return result === 'ok' && name && date ? { name, date, estimate } : null;
+  const subdivision = $('#report-subdivision').value.trim();
+  return result === 'ok' && name && date ? { name, date, subdivision, estimate } : null;
 }
 
 async function editReport(report) {
