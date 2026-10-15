@@ -10,7 +10,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 22;
+const APP_VERSION = 23;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -44,11 +44,14 @@ const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" c
 // #/settings    settings: company, issues and prices, backup
 // #/issues      the issue list and prices
 // #/p/<id>      a property's profile (contact, disclaimer, its own issues and prices)
+// #/search      search everything; #/search/<folder id> searches inside one folder
 // Using the URL hash means the phone's back button works.
 
 function route() {
   if (location.hash === '#/issues') return { kind: 'issues', id: '' };
   if (location.hash === '#/settings') return { kind: 'settings', id: '' };
+  const s = location.hash.match(/^#\/search(?:\/(.+))?$/);
+  if (s) return { kind: 'search', id: s[1] ? decodeURIComponent(s[1]) : '' };
   const p = location.hash.match(/^#\/p\/(.+)$/);
   if (p) return { kind: 'profile', id: decodeURIComponent(p[1]) };
   const m = location.hash.match(/^#\/([fr])\/(.+)$/);
@@ -69,6 +72,7 @@ async function render() {
   else if (r.kind === 'issues') await renderIssues();
   else if (r.kind === 'settings') await renderSettings();
   else if (r.kind === 'profile') await renderProfile(r.id);
+  else if (r.kind === 'search') await renderSearch(r.id);
   else await renderFolder(r.id);
   // Start at the top when moving to a different screen, but not when refreshing the same one.
   const screen = `${r.kind}:${r.id}`;
@@ -76,8 +80,9 @@ async function render() {
   lastScreen = screen;
 }
 
-function setHeader({ title, subtitle = '', crumbs = [], back = false, more = false, settings = false }) {
+function setHeader({ title, subtitle = '', crumbs = [], back = false, more = false, settings = false, search = false }) {
   $('#settings-btn').hidden = !settings;
+  $('#search-btn').hidden = !search;
   $('#title').textContent = title;
   $('#subtitle').textContent = subtitle;
   $('#subtitle').hidden = !subtitle;
@@ -112,6 +117,7 @@ async function renderFolder(id) {
     crumbs: path.length >= 2 ? crumbsFor(path.slice(0, -1)) : [],
     back: !!here,
     settings: !here,
+    search: true,
   });
   $('#fab-label').textContent = 'New';
 
@@ -202,6 +208,192 @@ function renderReportGroups(folderId, reports) {
     out.push(box);
   }
   $('#report-groups').replaceChildren(...out);
+}
+
+// ---------- Search ----------
+// Finds properties and folders (and a property's contact), subdivisions, reports, and findings
+// (issue, zone, note, city). Every word typed must match somewhere in the item.
+
+let searchQuery = '';
+let searchFrom = ''; // the folder search was opened from, to switch back from Everywhere
+let focusFinding = null; // a finding to scroll to when its report opens from search
+let searchData = null;
+let searchTimer = 0;
+
+const norm = (t) => String(t || '').toLowerCase();
+const words = (q) => norm(q).split(/\s+/).filter(Boolean);
+const matches = (hay, ws) => ws.every((w) => hay.includes(w));
+
+async function renderSearch(scopeId) {
+  const scope = scopeId ? await db.getFolder(scopeId) : null;
+  if (scopeId && !scope) return (location.hash = '#/search');
+  current = { kind: 'search', id: scopeId, record: scope };
+  setHeader({ title: 'Search', back: true });
+  const { folders, reports, findings } = await db.dumpAll();
+  searchData = { folders, reports, findings, scope };
+  if (scope) searchFrom = scope.id;
+  const from = searchFrom ? scope || (await db.getFolder(searchFrom)) : null;
+  const here = $('#search-scope-here');
+  $('#search-scope').hidden = !from;
+  here.textContent = from ? `In ${from.name}` : '';
+  here.classList.toggle('on', !!scope);
+  $('#search-scope-all').classList.toggle('on', !scope);
+  const input = $('#search-input');
+  input.value = searchQuery;
+  showView('search');
+  runSearch();
+  if (!searchQuery) input.focus();
+}
+
+$('#search-input').addEventListener('input', () => {
+  searchQuery = $('#search-input').value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 120);
+});
+$('#search-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('#search-input').blur(); // hide the keyboard to see the results
+});
+$('#search-scope-all').addEventListener('click', () => current.id && location.replace('#/search'));
+$('#search-scope-here').addEventListener('click', () => !current.id && searchFrom && location.replace(`#/search/${encodeURIComponent(searchFrom)}`));
+
+// Wraps each typed word found in el's text in <mark>.
+function markWords(el, ws) {
+  if (!el || !ws.length) return;
+  const text = el.textContent;
+  const lower = text.toLowerCase();
+  const hits = [];
+  for (const w of ws) for (let i = lower.indexOf(w); i >= 0; i = lower.indexOf(w, i + w.length)) hits.push([i, i + w.length]);
+  if (!hits.length) return;
+  hits.sort((a, b) => a[0] - b[0]);
+  const parts = [];
+  let at = 0;
+  for (const [a, b] of hits) {
+    if (a < at) continue;
+    if (a > at) parts.push(text.slice(at, a));
+    const m = document.createElement('mark');
+    m.textContent = text.slice(a, b);
+    parts.push(m);
+    at = b;
+  }
+  parts.push(text.slice(at));
+  el.replaceChildren(...parts);
+}
+
+function resultRow(opts, ws) {
+  const li = row(opts);
+  markWords(li.querySelector('.row-name'), ws);
+  markWords(li.querySelector('.row-detail'), ws);
+  return li;
+}
+
+const SEARCH_LIMIT = 50;
+
+function runSearch() {
+  if (!searchData) return;
+  const ws = words(searchQuery);
+  const out = [];
+  const empty = $('#search-empty');
+  if (!ws.length) {
+    $('#search-results').replaceChildren();
+    empty.hidden = false;
+    empty.textContent = 'Search by property, folder, subdivision, report name or date, issue, zone, or note.';
+    return;
+  }
+  const { folders, reports, findings, scope } = searchData;
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const pathOf = (id) => {
+    const names = [];
+    for (let f = byId.get(id), n = 0; f && n < 50; f = byId.get(f.parentId), n++) names.unshift(f.name);
+    return names;
+  };
+  const inScope = (folderId) => {
+    if (!scope) return true;
+    for (let f = byId.get(folderId), n = 0; f && n < 50; f = byId.get(f.parentId), n++) if (f.id === scope.id) return true;
+    return false;
+  };
+  const where = (folderId) => pathOf(folderId).join(' › ');
+  const section = (title, rows) => {
+    if (!rows.length) return;
+    const h = document.createElement('h2');
+    h.className = 'section-title';
+    h.textContent = rows.length > SEARCH_LIMIT ? `${title} · first ${SEARCH_LIMIT} of ${rows.length}` : `${title} · ${rows.length}`;
+    const ul = document.createElement('ul');
+    ul.className = 'list';
+    ul.append(...rows.slice(0, SEARCH_LIMIT).map((make) => make()));
+    out.push(h, ul);
+  };
+
+  // Folders
+  const folderHits = folders
+    .filter((f) => f.id !== scope?.id && inScope(f.id))
+    .filter((f) => {
+      const c = f.profile?.contact || {};
+      return matches(norm([f.name, c.name, c.address, c.email, c.phone].join(' ')), ws);
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    .map((f) => () =>
+      resultRow({ icon: FOLDER_ICON, name: f.name, detail: f.parentId === db.ROOT ? 'Property' : where(f.parentId), href: folderHref(f.id) }, ws)
+    );
+  section('Properties and folders', folderHits);
+
+  // Subdivisions, one per folder they're used in
+  const scoped = reports.filter((r) => inScope(r.folderId));
+  const subHits = [];
+  const byFolder = new Map();
+  for (const r of scoped) if (subKey(r.subdivision)) (byFolder.get(r.folderId) || byFolder.set(r.folderId, []).get(r.folderId)).push(r);
+  for (const [folderId, rs] of byFolder) {
+    for (const g of subdivisionGroups(rs)) {
+      if (!matches(g.key, ws)) continue;
+      subHits.push({ g, folderId });
+    }
+  }
+  subHits.sort((a, b) => a.g.name.localeCompare(b.g.name, undefined, { numeric: true }));
+  section(
+    'Subdivisions',
+    subHits.map(({ g, folderId }) => () => {
+      const li = resultRow({ icon: FOLDER_ICON, name: g.name, detail: `${where(folderId)} · ${plural(g.reports.length, 'report')}`, href: folderHref(folderId) }, ws);
+      li.querySelector('a').addEventListener('click', () => setFolded(`${folderId}|${g.key}`, false));
+      return li;
+    })
+  );
+
+  // Reports
+  const reportHits = scoped
+    .filter((r) => matches(norm([r.name, r.subdivision, r.date, formatDate(r.date)].join(' ')), ws))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((r) => () =>
+      resultRow({ icon: REPORT_ICON, name: r.name, detail: [where(r.folderId), r.subdivision, formatDate(r.date)].filter(Boolean).join(' · '), href: reportHref(r.id) }, ws)
+    );
+  section('Reports', reportHits);
+
+  // Findings
+  const reportById = new Map(scoped.map((r) => [r.id, r]));
+  const findingHits = findings
+    .filter((f) => reportById.has(f.reportId))
+    .filter((f) => matches(norm([f.issue, f.zone ? `zone ${f.zone}` : '', f.note, f.stamp?.city].join(' ')), ws))
+    .sort((a, b) => reportById.get(b.reportId).date.localeCompare(reportById.get(a.reportId).date) || (a.createdAt || 0) - (b.createdAt || 0))
+    .map((f) => () => {
+      const r = reportById.get(f.reportId);
+      const detail = [pathOf(r.folderId)[0], r.name, f.zone ? zoneName(f.zone) : '', f.note].filter(Boolean).join(' · ');
+      const li = resultRow({ icon: REPORT_ICON, name: f.issue || 'Finding', detail, href: reportHref(r.id) }, ws);
+      const a = li.querySelector('a');
+      if (f.photo instanceof Blob) {
+        const img = document.createElement('img');
+        img.className = 'result-photo';
+        img.alt = '';
+        const url = URL.createObjectURL(f.photo);
+        img.onload = img.onerror = () => URL.revokeObjectURL(url);
+        img.src = url;
+        a.querySelector('svg').replaceWith(img);
+      }
+      a.addEventListener('click', () => (focusFinding = f.id));
+      return li;
+    });
+  section('Findings', findingHits);
+
+  $('#search-results').replaceChildren(...out);
+  empty.hidden = out.length > 0;
+  empty.textContent = scope ? `Nothing in ${scope.name} matches “${searchQuery.trim()}”. Try Everywhere.` : `Nothing matches “${searchQuery.trim()}”.`;
 }
 
 // ---------- Company logo (home screen) ----------
@@ -377,12 +569,15 @@ function row({ icon, name, detail, href, menuLabel, onMenu }) {
     text.append(d);
   }
   a.append(text);
-  const more = document.createElement('button');
-  more.className = 'row-more';
-  more.setAttribute('aria-label', menuLabel);
-  more.innerHTML = MORE_ICON;
-  more.addEventListener('click', onMenu);
-  li.append(a, more);
+  li.append(a);
+  if (onMenu) {
+    const more = document.createElement('button');
+    more.className = 'row-more';
+    more.setAttribute('aria-label', menuLabel);
+    more.innerHTML = MORE_ICON;
+    more.addEventListener('click', onMenu);
+    li.append(more);
+  }
   return li;
 }
 
@@ -555,6 +750,15 @@ async function renderReport(id) {
   $('#finding-groups').replaceChildren(...sections);
   $('#report-empty').hidden = findings.length > 0;
   showView('report');
+  if (focusFinding) {
+    const card = $('#finding-groups').querySelector(`li[data-id="${CSS.escape(focusFinding)}"]`);
+    focusFinding = null;
+    if (card) {
+      requestAnimationFrame(() => card.scrollIntoView({ block: 'center' }));
+      card.classList.add('flash');
+      setTimeout(() => card.classList.remove('flash'), 2000);
+    }
+  }
   fillMissingCities(findings);
 }
 
@@ -1778,6 +1982,7 @@ function showView(kind) {
   $('#issues-view').hidden = kind !== 'issues';
   $('#settings-view').hidden = kind !== 'settings';
   $('#profile-view').hidden = kind !== 'profile';
+  $('#search-view').hidden = kind !== 'search';
   $('#fab').hidden = kind !== 'folder';
   document.body.classList.toggle('in-report', kind === 'report');
 }
@@ -1794,6 +1999,10 @@ window.addEventListener('hashchange', () => {
 $('#back').addEventListener('click', () => {
   // Issues and prices opens from Settings or from a report's estimate, so go back to whichever.
   if (current.kind === 'issues' && visited.length > 1) return history.back();
+  // Anything opened from search goes back to the results.
+  if (current.kind !== 'search' && (visited[visited.length - 2] || '').startsWith('#/search')) return history.back();
+  // Search opens from any folder, so go back to where it was opened.
+  if (current.kind === 'search') return visited.length > 1 ? history.back() : (location.hash = folderHref(current.id || db.ROOT));
   const parent = current.kind === 'profile'
     ? folderHref(current.id)
     : current.kind === 'issues'
@@ -1812,6 +2021,12 @@ $('#show-coords').addEventListener('click', () => showCoordinates(current.record
 $('#header-more').addEventListener('click', () => current.kind === 'report' && reportMenu(current.record));
 
 $('#fab').addEventListener('click', newInFolder);
+$('#search-btn').addEventListener('click', () => {
+  const here = current.kind === 'folder' && current.record ? current.record.id : '';
+  searchQuery = '';
+  searchFrom = here;
+  location.hash = here ? `#/search/${encodeURIComponent(here)}` : '#/search';
+});
 $('#add-finding').addEventListener('click', addFinding);
 
 window.addEventListener('hashchange', render);

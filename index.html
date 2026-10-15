@@ -23,6 +23,9 @@
       <h1 id="title">Properties</h1>
       <div id="subtitle" class="subtitle" hidden></div>
     </div>
+    <button id="search-btn" class="icon-btn end" aria-label="Search" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
     <button id="settings-btn" class="icon-btn end" aria-label="Settings" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     </button>
@@ -68,6 +71,19 @@
       <div id="report-groups"></div>
       <p id="folder-empty" class="empty" hidden>Nothing here yet. Tap <strong>New</strong> to add a folder or a wet check report.</p>
       <p id="app-version" class="version" hidden></p>
+    </section>
+
+    <section id="search-view" hidden>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <input id="search-input" class="field" type="search" placeholder="Properties, reports, issues, notes…" autocomplete="off" autocapitalize="off" enterkeyhint="search" aria-label="Search">
+      </div>
+      <div id="search-scope" class="scope-chips" hidden>
+        <button id="search-scope-here" type="button" class="scope-chip"></button>
+        <button id="search-scope-all" type="button" class="scope-chip">Everywhere</button>
+      </div>
+      <div id="search-results"></div>
+      <p id="search-empty" class="empty" hidden></p>
     </section>
 
     <section id="settings-view" hidden>
