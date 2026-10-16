@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 26;
+const APP_VERSION = 27;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -2193,6 +2193,21 @@ async function addMark(kind) {
 
 $('#mark-ok').addEventListener('click', () => addMark('ok'));
 $('#mark-fail').addEventListener('click', () => addMark('fail'));
+
+// ---------- No zooming ----------
+// The app is laid out for a phone screen, so pinch and double-tap zoom are turned off.
+// Android follows the viewport meta; iPhone ignores it, so stop its gesture events here.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+document.addEventListener(
+  'touchmove',
+  (e) => {
+    if (e.touches.length > 1 || (e.scale !== undefined && e.scale !== 1)) e.preventDefault();
+  },
+  { passive: false }
+);
+// Double-tap zoom is off through touch-action in styles.css, so quick repeat taps still work.
 
 // ---------- Wiring ----------
 

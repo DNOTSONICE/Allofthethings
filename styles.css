@@ -691,3 +691,7 @@ dialog.sigpad { width: min(96vw, 640px); }
 .mark-btn:active { filter: brightness(0.92); }
 .mark-btn:disabled { opacity: 0.5; }
 .card-photo.mark { object-fit: contain; background: #fff; padding: 12px 0; }
+
+/* No double-tap zoom anywhere; pinch zoom is blocked in app.js and the viewport meta. */
+html, body { touch-action: pan-x pan-y; }
+button, a, input, select, textarea, label { touch-action: manipulation; }
