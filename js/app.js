@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
-import { loadIssueList, saveIssueList, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot } from './issues.js';
+import { loadIssueList, saveIssueList, addNewDefaults, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
 import { createBackup, readBackup, restoreBackup } from './backup.js';
 import { drawSignature } from './signature.js';
@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 28;
+const APP_VERSION = 29;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -2334,4 +2334,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
 }
 
-lockMissingPrices().finally(render);
+addNewDefaults()
+  .catch(() => {})
+  .then(lockMissingPrices)
+  .finally(render);

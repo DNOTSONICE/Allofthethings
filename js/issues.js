@@ -47,6 +47,30 @@ export async function saveIssueList(list) {
   await db.setSetting('issueList', clone(list));
 }
 
+// Issues added to data/issues.json after people had already edited their own list. A saved
+// list never picks up new defaults by itself, so each one here is added to it once (unless it
+// is already there); 'issuesAdded' remembers which, so deleting one later keeps it deleted.
+const NEW_DEFAULTS = [{ name: 'Broken nozzle', group: 'Head and nozzle adjustments', before: 'Clogged nozzle' }];
+
+export async function addNewDefaults() {
+  const saved = await db.getSetting('issueList');
+  const done = (await db.getSetting('issuesAdded')) || [];
+  const todo = NEW_DEFAULTS.filter((d) => !done.includes(d.name));
+  if (!todo.length) return;
+  if (saved && saved.groups) {
+    const list = clone(saved);
+    for (const d of todo) {
+      if (findIssue(list, d.name)) continue;
+      let g = list.groups.find((x) => x.name === d.group);
+      if (!g) list.groups.push((g = { name: d.group, issues: [] }));
+      const at = g.issues.findIndex((i) => i.name === d.before);
+      g.issues.splice(at < 0 ? 0 : at, 0, { name: d.name, price: null, off: false });
+    }
+    await saveIssueList(list);
+  }
+  await db.setSetting('issuesAdded', [...done, ...todo.map((d) => d.name)]);
+}
+
 // Back to data/issues.json, dropping the user's edits and prices.
 export async function resetIssueList() {
   await db.setSetting('issueList', null);
