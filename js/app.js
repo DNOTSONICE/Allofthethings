@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 29;
+const APP_VERSION = 30;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -1890,7 +1890,7 @@ function setPhoto(blob, stamp = null) {
   setStamp(stamp);
 }
 
-const MAX_MORE_PHOTOS = 8;
+const MAX_MORE_PHOTOS = 6; // findings saved with more (the limit was 8) keep them all
 
 function renderMorePhotos() {
   for (const u of form.moreUrls) URL.revokeObjectURL(u);
@@ -1923,7 +1923,7 @@ async function onMorePhotos(e) {
   const files = [...e.target.files];
   e.target.value = '';
   if (!files.length) return;
-  const room = MAX_MORE_PHOTOS - form.more.length;
+  const room = Math.max(0, MAX_MORE_PHOTOS - form.more.length);
   showPhotoError(files.length > room ? `Up to ${MAX_MORE_PHOTOS + 1} photos per finding. Only the first ${room} were added.` : '');
   form.busy = true;
   try {

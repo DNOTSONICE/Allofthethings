@@ -5,7 +5,7 @@ A mobile-first installable web app (PWA) for irrigation wet checks. Everything i
 Done so far:
 - Folder manager for properties: create, rename, delete and nest folders.
 - Wet check reports inside folders, each with a name and date.
-- Findings in a report: a main photo (camera or library, compressed to 1600px JPEG on save) plus up to 8 more photos, an issue, a zone and an optional note. Extra photos print in rows of three under the finding in the PDF.
+- Findings in a report: a main photo (camera or library, compressed to 1600px JPEG on save) plus up to 6 more photos (findings saved earlier with up to 8 keep them), an issue, a zone and an optional note. Extra photos print in rows of three under the finding in the PDF.
 - Location box under the note on each finding: GPS coordinates with Map and Copy buttons, plus city, accuracy and time (looked up via BigDataCloud when online, filled in later if taken offline). Camera photos use the phone's location; library photos use what the photo itself recorded.
 - Coordinates list for a report (report menu): every finding's coordinates, with Map, Copy and Copy all.
 - Zone-by-zone workflow: each report has a current zone (bottom bar, with next/previous buttons) that new findings go into, and findings are grouped by zone.
