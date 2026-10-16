@@ -200,10 +200,18 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
-    <button id="add-finding" class="btn primary add-finding">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-      <span id="add-finding-label">Add finding to Zone 1</span>
-    </button>
+    <div class="add-row">
+      <button id="mark-ok" class="mark-btn ok" aria-label="Mark this zone: no issues found">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="add-finding" class="btn primary add-finding">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        <span id="add-finding-label">Add finding to Zone 1</span>
+      </button>
+      <button id="mark-fail" class="mark-btn fail" aria-label="Mark this zone: valve not opening">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      </button>
+    </div>
   </div>
 
   <button id="fab" class="fab">

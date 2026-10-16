@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 25;
+const APP_VERSION = 26;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -812,7 +812,7 @@ function findingCard(finding, number, list = null, snapshot = null) {
     photoUrls.push(url);
     img.src = url;
     img.alt = '';
-    img.className = 'card-photo';
+    img.className = finding.mark ? 'card-photo mark' : 'card-photo';
     btn.append(img);
     const more = (finding.morePhotos || []).length;
     if (more) {
@@ -828,7 +828,7 @@ function findingCard(finding, number, list = null, snapshot = null) {
   head.className = 'card-issue';
   head.textContent = `${number}. ${finding.issue}`;
   body.append(head);
-  if (list) {
+  if (list && finding.mark !== 'ok') {
     const price = findingPrice(finding, list, snapshot);
     const p = document.createElement('div');
     p.className = 'card-price' + (price == null ? ' none' : '');
@@ -2103,6 +2103,8 @@ async function addFinding() {
 async function editFinding(finding) {
   const { result, fields } = await openFindingForm(finding);
   if (result === 'ok') {
+    // A zone status mark stays one until its image is replaced with a photo.
+    if (finding.mark && fields.photo === finding.photo) fields.mark = finding.mark;
     await db.saveFinding(finding.reportId, fields, finding.id);
     render();
   }
@@ -2112,6 +2114,85 @@ async function editFinding(finding) {
     render();
   }
 }
+
+// ---------- Zone status marks ----------
+// One tap adds a finding for the current zone with a drawn image in place of a photo:
+// a green check for "No issues found", or a red X that sets the issue to "Valve not opening"
+// (priced from the list like any finding). finding.mark is 'ok' or 'fail'. Both open for
+// editing like any other finding.
+
+const MARKS = {
+  ok: { color: '#1f9d55', issue: 'No issues found', toast: 'no issues found' },
+  fail: { color: '#d32f2f', issue: 'Valve not opening', toast: 'valve not opening' },
+};
+const markImages = {};
+
+function markImage(kind) {
+  if (markImages[kind]) return markImages[kind];
+  const c = document.createElement('canvas');
+  c.width = c.height = 600;
+  const ctx = c.getContext('2d');
+  const { color } = MARKS[kind];
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 600, 600);
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 20; // frame
+  const r = 36, m = 16, w = 600 - m * 2;
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(m, m, w, w, r) : ctx.rect(m, m, w, w);
+  ctx.stroke();
+  ctx.lineWidth = 68;
+  ctx.beginPath();
+  if (kind === 'ok') {
+    ctx.moveTo(156, 312);
+    ctx.lineTo(256, 412);
+    ctx.lineTo(448, 204);
+  } else {
+    ctx.moveTo(184, 184);
+    ctx.lineTo(416, 416);
+    ctx.moveTo(416, 184);
+    ctx.lineTo(184, 416);
+  }
+  ctx.stroke();
+  markImages[kind] = new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+  return markImages[kind];
+}
+
+let marking = false;
+async function addMark(kind) {
+  if (marking || current.kind !== 'report') return;
+  marking = true;
+  $('#mark-ok').disabled = $('#mark-fail').disabled = true;
+  try {
+    const report = current.record;
+    const zone = zoneOf(report);
+    const pos = await getPosition(6000); // the spot is handy for a valve that won't open
+    const fields = {
+      photo: await markImage(kind),
+      morePhotos: [],
+      stamp: { takenAt: Date.now(), ...(pos || {}) },
+      issue: MARKS[kind].issue,
+      zone,
+      note: '',
+      disclaimer: '',
+      price: null,
+      mark: kind,
+    };
+    const saved = await db.saveFinding(report.id, fields);
+    await render();
+    const card = document.querySelector(`[data-id="${saved.id}"]`);
+    if (card) card.scrollIntoView({ block: 'center' });
+    showToast(`${zone ? zoneName(zone) : 'Zone'} marked: ${MARKS[kind].toast}. Tap it to edit.`, 'ok');
+  } finally {
+    marking = false;
+    $('#mark-ok').disabled = $('#mark-fail').disabled = false;
+  }
+}
+
+$('#mark-ok').addEventListener('click', () => addMark('ok'));
+$('#mark-fail').addEventListener('click', () => addMark('fail'));
 
 // ---------- Wiring ----------
 

@@ -124,6 +124,7 @@ export function buildEstimate(findings, list, snapshot = null) {
   const lines = new Map();
   const prices = [];
   for (const f of findings) {
+    if (f.mark === 'ok') continue; // a zone marked "no issues found" isn't a repair
     const unit = findingPrice(f, list, snapshot);
     prices.push([f.id, unit]);
     const key = `${f.issue}\u0000${unit}`;

@@ -679,3 +679,15 @@ dialog.sigpad { width: min(96vw, 640px); }
 .sig-grid .field { min-width: 0; width: 100%; }
 #signature-dialog .hint { margin-bottom: 10px; }
 #signature-dialog .photo-buttons .btn { font-size: 0.95rem; }
+
+/* Zone status marks */
+.add-row { display: flex; gap: 8px; max-width: 560px; margin: 10px auto 0; align-items: stretch; }
+.add-row .add-finding { flex: 1; min-width: 0; margin: 0; padding-left: 8px; padding-right: 8px; }
+.add-row .add-finding span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mark-btn { flex: none; width: 56px; border-radius: 12px; background: #fff; display: grid; place-items: center; border: 2.5px solid; }
+.mark-btn svg { width: 28px; height: 28px; }
+.mark-btn.ok { color: #1f9d55; border-color: #1f9d55; }
+.mark-btn.fail { color: #d32f2f; border-color: #d32f2f; }
+.mark-btn:active { filter: brightness(0.92); }
+.mark-btn:disabled { opacity: 0.5; }
+.card-photo.mark { object-fit: contain; background: #fff; padding: 12px 0; }

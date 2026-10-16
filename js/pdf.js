@@ -76,6 +76,7 @@ const CONTENT_W = PAGE_W - MARGIN * 2;
 const PHOTO_W = 220;
 const PHOTO_MAX_H = 220;
 const GAP = 16;
+const MARK_W = 110; // zone status mark (check or X) in place of a photo
 
 const INK = [24, 33, 43];
 const MUTED = [98, 110, 122];
@@ -154,7 +155,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     if (y + h > bodyBottom) newPage();
   }
 
-  const total = groups.reduce((n, [, items]) => n + items.length, 0);
+  const total = groups.reduce((n, [, items]) => n + items.filter((f) => f.mark !== 'ok').length, 0); // zones marked OK aren't findings
   const findingPrices = new Map(estimate ? estimate.prices : []);
   const zones = groups.filter(([z]) => z).length;
   const located = groups.reduce((n, [, items]) => n + items.filter((f) => f.stamp && f.stamp.lat != null).length, 0);
@@ -348,7 +349,8 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       let photo = null;
       const img = f.photo ? await loadImage(doc, f.photo) : null;
       if (img) {
-        const s = Math.min(PHOTO_W / img.w, PHOTO_MAX_H / img.h);
+        const max = f.mark ? MARK_W : PHOTO_W; // a zone status mark prints smaller than a photo
+        const s = Math.min(max / img.w, (f.mark ? MARK_W : PHOTO_MAX_H) / img.h);
         photo = { data: img.data, format: img.format, w: img.w * s, h: img.h * s };
       }
 
@@ -366,7 +368,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       };
       add('bold', 13, INK, f.issue, { x: titleX });
       let sub = zoneName(f.zone || '');
-      if (estimate) {
+      if (estimate && f.mark !== 'ok') {
         const price = findingPrices.get(f.id);
         sub += `  ·  ${price == null ? 'No price' : formatMoney(price)}`;
       }
@@ -399,9 +401,11 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       }
 
       if (photo) {
-        doc.addImage(photo.data, photo.format, MARGIN, y, photo.w, photo.h);
-        stroke(LINE, 0.5);
-        doc.rect(MARGIN, y, photo.w, photo.h, 'S');
+        doc.addImage(photo.data, photo.format, MARGIN + (f.mark ? (PHOTO_W - photo.w) / 2 : 0), y, photo.w, photo.h);
+        if (!f.mark) {
+          stroke(LINE, 0.5);
+          doc.rect(MARGIN, y, photo.w, photo.h, 'S');
+        }
       }
 
       // Number badge.
