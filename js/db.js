@@ -304,6 +304,48 @@ export async function dumpFolder(id) {
   return { folders, reports, findings, settings: [] };
 }
 
+async function readable(b) {
+  try {
+    await b.slice(0, 1).arrayBuffer();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// old with each unreadable photo swapped for the backup's copy, or null if none needed it.
+async function repairBlobs(old, rec) {
+  let changed = false;
+  const fix = async (mine, theirs) => {
+    if (mine instanceof Blob) {
+      if (theirs instanceof Blob && !(await readable(mine))) {
+        changed = true;
+        return theirs;
+      }
+      return mine;
+    }
+    if (Array.isArray(mine) && Array.isArray(theirs)) {
+      const out = [];
+      for (let i = 0; i < mine.length; i++) {
+        const x = mine[i];
+        // Lists of records (a property's controllers) are matched by id, photo lists by position.
+        const match = x && typeof x === 'object' && !(x instanceof Blob) && x.id ? theirs.find((t) => t && t.id === x.id) : theirs[i];
+        out.push(await fix(x, match));
+      }
+      return out;
+    }
+    if (mine && typeof mine === 'object' && theirs && typeof theirs === 'object' && Object.values(mine).some((v) => v instanceof Blob)) {
+      const out = { ...mine };
+      for (const [k, v] of Object.entries(mine)) out[k] = await fix(v, theirs[k]);
+      return out;
+    }
+    return mine;
+  };
+  const out = { ...old };
+  for (const [k, v] of Object.entries(old)) out[k] = await fix(v, rec[k]);
+  return changed ? out : null;
+}
+
 // Writes backup records in one transaction. With replace, everything already on the
 // device is cleared first; otherwise records are added, and where the same item exists
 // on both sides the more recently changed copy wins.
@@ -319,22 +361,31 @@ export async function restore({ folders = [], reports = [], findings = [], setti
   }
   const folderIds = new Set([...(existing.folders ? existing.folders.keys() : []), ...folders.map((f) => f.id)]);
 
-  const tx = db.transaction(stores, 'readwrite');
-  if (replace) for (const s of stores) tx.objectStore(s).clear();
-  let written = 0;
-  const write = (store, rec) => {
+  // Work out every write first: checking photos needs awaits, which would end the transaction.
+  const writes = [];
+  const add = async (store, rec) => {
     const old = existing[store] && existing[store].get(rec.id);
-    if (old && (old.updatedAt || 0) > (rec.updatedAt || 0)) return; // keep the newer copy on this device
-    tx.objectStore(store).put(rec);
-    written++;
+    if (old && (old.updatedAt || 0) > (rec.updatedAt || 0)) {
+      // Keep the newer copy on this device, but take the backup's photo wherever this
+      // device's copy of it can no longer be read.
+      const fixed = await repairBlobs(old, rec);
+      if (fixed) writes.push([store, await detachBlobs(fixed)]); // fresh copies, as put() makes
+      return;
+    }
+    writes.push([store, rec]);
   };
   for (const f of folders) {
     // A property backup's top folder lands at the top level if its old parent isn't here.
     const parentId = f.parentId === ROOT || folderIds.has(f.parentId) ? f.parentId : ROOT;
-    write('folders', { ...f, parentId });
+    await add('folders', { ...f, parentId });
   }
-  for (const r of reports) write('reports', r);
-  for (const f of findings) write('findings', f);
+  for (const r of reports) await add('reports', r);
+  for (const f of findings) await add('findings', f);
+
+  const tx = db.transaction(stores, 'readwrite');
+  if (replace) for (const s of stores) tx.objectStore(s).clear();
+  for (const [store, rec] of writes) tx.objectStore(store).put(rec);
+  const written = writes.length;
   // When adding, this device's own logo, color and so on stay; the backup only fills gaps.
   for (const s of settings) if (replace || !existing.settingKeys.has(s.key)) tx.objectStore('settings').put(s);
   await txDone(tx);

@@ -17,8 +17,15 @@ function blobToDataUrl(blob) {
   });
 }
 
+// Restored photos get their own bytes in memory. A Blob that only points into the picked
+// backup file loses its contents on iPhone and iPad once Safari lets go of that file, which
+// showed as photos turning into question marks after a report was edited.
+async function ownBlob(blob, type = blob.type) {
+  return new Blob([await blob.arrayBuffer()], { type });
+}
+
 async function dataUrlToBlob(url) {
-  return (await fetch(url)).blob();
+  return ownBlob(await (await fetch(url)).blob());
 }
 
 // Photos and logos are Blobs, which JSON can't hold: store them as { $blob: "data:..." }.
@@ -230,8 +237,7 @@ export async function readBackup(file) {
     if (value && typeof value === 'object' && typeof value.$file === 'string') {
       const get = files && files.get(prefix + value.$file);
       if (!get) return null;
-      const raw = await get();
-      return new Blob([raw], { type: typeOf(value.$file) });
+      return ownBlob(await get(), typeOf(value.$file));
     }
     if (Array.isArray(value)) return (await Promise.all(value.map(resolve))).filter((v) => v !== null);
     if (value && typeof value === 'object' && !(value instanceof Blob)) {
