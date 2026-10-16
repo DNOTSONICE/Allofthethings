@@ -120,6 +120,7 @@ export async function createBackup(appVersion, folderId = null, { makePdf, progr
   for (const f of data.folders) {
     addDir(folderDir(f));
     if (f.photo instanceof Blob) add(`${folderDir(f)}Property photo.${extOf(f.photo)}`, f.photo);
+    if (f.controllers && f.controllers.length) add(`${folderDir(f)}Controllers.txt`, controllersText(f.controllers));
   }
 
   // Reports: <folder>/<subdivision>/<date name>/ with the PDF and a Photos folder.
@@ -246,4 +247,21 @@ export async function readBackup(file) {
 
 export function restoreBackup(backup, { replace }) {
   return db.restore(backup.data, { replace });
+}
+
+// The property's controllers, readable without the app.
+function controllersText(list) {
+  const yn = (v) => (v === 'yes' ? 'Yes' : v === 'no' ? 'No' : '');
+  const water = { municipal: 'Municipal', pump: 'Pump fed' };
+  return list.map((c) => [
+    c.name,
+    ['GPS location', c.location ? `${c.location.lat.toFixed(6)}, ${c.location.lon.toFixed(6)}` : ''],
+    ['Make', c.make],
+    ['Model', c.model],
+    ['Zones', c.zones ? String(c.zones) : ''],
+    ['Water source', water[c.water] || ''],
+    ['Rain sensor', yn(c.rainSensor)],
+    ['Master valve', yn(c.masterValve)],
+    ['Point of connection', c.poc],
+  ].map((x) => (Array.isArray(x) ? (x[1] ? `  ${x[0]}: ${x[1]}` : '') : x)).filter(Boolean).join('\n')).join('\n\n') + '\n';
 }

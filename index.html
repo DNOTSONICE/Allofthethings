@@ -140,6 +140,10 @@
           <span id="profile-contact-detail" class="row-detail">Shown on the cover of this property's reports.</span>
         </span>
       </button>
+      <h2 class="section-title">Controllers</h2>
+      <ul id="controller-list" class="list"></ul>
+      <p id="controller-empty" class="hint">No controllers yet. Add each controller on this property.</p>
+      <button id="add-controller" type="button" class="btn small outline add-issue">+ Add controller</button>
       <h2 class="section-title">Troubleshooting disclaimer</h2>
       <button id="profile-disclaimer" class="company-card">
         <span class="company-logo-box backup-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 8h6M9 12h6M9 16h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -448,6 +452,70 @@
       <div class="actions">
         <button id="issue-delete" type="button" class="btn danger-text start">Delete</button>
         <button id="issue-reset" type="button" class="btn start" hidden>Reset to main list</button>
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="controller-dialog" class="full">
+    <form data-ok>
+      <h2 id="controller-title">Controller</h2>
+      <label class="label" for="controller-name">Name or area it covers</label>
+      <input id="controller-name" class="field" type="text" required autocomplete="off" autocapitalize="sentences" maxlength="120" placeholder="e.g. Clubhouse, Phase 2 front entry">
+      <label class="label" for="controller-location">GPS location</label>
+      <div class="controller-loc">
+        <input id="controller-location" class="field" type="text" inputmode="decimal" autocomplete="off" maxlength="60" placeholder="Latitude, longitude">
+        <button id="controller-here" type="button" class="btn small outline">Use my location</button>
+      </div>
+      <p id="controller-loc-status" class="hint controller-loc-status"></p>
+      <div class="sig-grid">
+        <div>
+          <label class="label" for="controller-make">Make</label>
+          <input id="controller-make" class="field" type="text" autocomplete="off" autocapitalize="words" maxlength="60" placeholder="e.g. Rain Bird" list="controller-makes">
+        </div>
+        <div>
+          <label class="label" for="controller-model">Model</label>
+          <input id="controller-model" class="field" type="text" autocomplete="off" autocapitalize="characters" maxlength="60" placeholder="e.g. ESP-TM2">
+        </div>
+      </div>
+      <datalist id="controller-makes">
+        <option value="Rain Bird"><option value="Hunter"><option value="Toro"><option value="Irritrol"><option value="Weathermatic"><option value="Orbit"><option value="Rachio"><option value="Calsense"><option value="Baseline">
+      </datalist>
+      <div class="sig-grid">
+        <div>
+          <label class="label" for="controller-zones">Number of zones</label>
+          <input id="controller-zones" class="field" type="number" inputmode="numeric" min="1" max="999" step="1">
+        </div>
+        <div>
+          <label class="label" for="controller-water">Water source</label>
+          <select id="controller-water" class="field">
+            <option value="">Not set</option>
+            <option value="municipal">Municipal</option>
+            <option value="pump">Pump fed</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="controller-rain">Rain sensor</label>
+          <select id="controller-rain" class="field">
+            <option value="">Not set</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="controller-master">Master valve</label>
+          <select id="controller-master" class="field">
+            <option value="">Not set</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+      </div>
+      <label class="label" for="controller-poc">Point of connection</label>
+      <textarea id="controller-poc" class="field" rows="2" maxlength="300" placeholder="Where the system ties into the water supply, e.g. NE corner by the backflow"></textarea>
+      <div class="actions">
+        <button id="controller-delete" type="button" class="btn danger-text start" hidden>Delete</button>
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
       </div>

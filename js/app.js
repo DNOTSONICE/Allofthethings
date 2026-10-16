@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 30;
+const APP_VERSION = 31;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -36,6 +36,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 const FOLDER_ICON = '<svg class="ico folder" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
 const REPORT_ICON = '<svg class="ico report" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1.5V9h4.5M8 13h8M8 16.5h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+const CONTROLLER_ICON = '<svg class="ico report" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm3 4h8v4H8zM8 15.5h1.5M11.25 15.5h1.5M14.5 15.5H16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 
 // ---------- Routing ----------
@@ -1653,11 +1654,12 @@ function renderProfileCard(property) {
   const p = property.profile || {};
   const parts = [];
   if (p.contact && p.contact.name) parts.push(`Contact: ${p.contact.name}`);
+  if (property.controllers && property.controllers.length) parts.push(plural(property.controllers.length, 'controller'));
   const custom = Object.keys(p.issues || {}).length + (p.added || []).length;
   if (custom) parts.push(`${plural(custom, 'custom issue')}`);
   if (p.disclaimerOn === false) parts.push('disclaimer off');
   else if (p.disclaimer || p.disclaimerOn === true) parts.push('own disclaimer');
-  $('#profile-card-detail').textContent = parts.length ? parts.join(' · ') : 'Contact, disclaimer, and issues and prices for this property.';
+  $('#profile-card-detail').textContent = parts.length ? parts.join(' · ') : 'Contact, controllers, disclaimer, and issues and prices for this property.';
 }
 
 $('#profile-card').addEventListener('click', () => (location.hash = profileHref(current.id)));
@@ -1676,6 +1678,8 @@ async function renderProfile(id) {
   $('#profile-contact-detail').textContent = c
     ? [c.phone, c.email, c.address].filter(Boolean).join(' · ') || 'Tap to edit.'
     : 'Shown on the cover of this property’s reports.';
+
+  renderControllers(folder.controllers || []);
 
   const [mainText, mainOn] = await Promise.all([mainDisclaimer(), mainDisclaimerOn()]);
   const on = p.disclaimerOn != null ? p.disclaimerOn : mainOn;
@@ -1838,10 +1842,132 @@ $('#profile-disclaimer').addEventListener('click', async () => {
   render();
 });
 
+// ---------- Controllers ----------
+// Kept on the property folder as folder.controllers (not in the profile, so resetting the
+// profile's settings leaves them alone): [{ id, name, location {lat, lon, accuracy?}, make,
+// model, zones, water 'municipal'|'pump', rainSensor 'yes'|'no', masterValve 'yes'|'no', poc }].
+
+const WATER_LABELS = { municipal: 'Municipal water', pump: 'Pump fed' };
+
+function controllerDetail(c) {
+  const makeModel = [c.make, c.model].filter(Boolean).join(' ');
+  return [
+    makeModel,
+    c.zones ? plural(c.zones, 'zone') : '',
+    WATER_LABELS[c.water] || '',
+    c.rainSensor === 'yes' ? 'Rain sensor' : c.rainSensor === 'no' ? 'No rain sensor' : '',
+    c.masterValve === 'yes' ? 'Master valve' : c.masterValve === 'no' ? 'No master valve' : '',
+  ].filter(Boolean).join(' · ');
+}
+
+function renderControllers(list) {
+  $('#controller-empty').hidden = list.length > 0;
+  $('#controller-list').replaceChildren(...list.map((c) => {
+    const li = row({ icon: CONTROLLER_ICON, name: c.name, detail: controllerDetail(c) || 'Tap to add details.', href: '#' });
+    li.querySelector('.row-open').addEventListener('click', (e) => {
+      e.preventDefault();
+      editController(c);
+    });
+    return li;
+  }));
+}
+
+// "33.45, -112.07" (or with a space and no comma) -> { lat, lon }; null if it isn't a spot.
+function parseCoords(text) {
+  const m = text.trim().match(/^(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lat = Number(m[1]), lon = Number(m[2]);
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
+const coordsField = (loc) => (loc ? `${loc.lat.toFixed(6)}, ${loc.lon.toFixed(6)}` : '');
+
+function showControllerLoc(loc, note = '') {
+  const status = $('#controller-loc-status');
+  status.replaceChildren();
+  if (note) status.textContent = note;
+  if (loc) {
+    const a = document.createElement('a');
+    a.href = mapUrl(loc);
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'Open in maps';
+    status.append(note ? ' ' : '', a);
+  }
+}
+
+async function editController(existing) {
+  const c = existing || {};
+  $('#controller-title').textContent = existing ? 'Edit controller' : 'Add controller';
+  $('#controller-name').value = c.name || '';
+  $('#controller-location').value = coordsField(c.location);
+  $('#controller-make').value = c.make || '';
+  $('#controller-model').value = c.model || '';
+  $('#controller-zones').value = c.zones || '';
+  $('#controller-water').value = c.water || '';
+  $('#controller-rain').value = c.rainSensor || '';
+  $('#controller-master').value = c.masterValve || '';
+  $('#controller-poc').value = c.poc || '';
+  $('#controller-delete').hidden = !existing;
+  $('#controller-delete').onclick = () => $('#controller-dialog').close('delete');
+
+  let location = c.location || null;
+  const locInput = $('#controller-location');
+  locInput.setCustomValidity('');
+  showControllerLoc(location);
+  locInput.oninput = () => {
+    const text = locInput.value.trim();
+    location = text ? parseCoords(text) : null;
+    locInput.setCustomValidity(text && !location ? 'Enter latitude, longitude, e.g. 33.4484, -112.0740' : '');
+    showControllerLoc(location);
+  };
+  $('#controller-here').onclick = async () => {
+    const btn = $('#controller-here');
+    btn.disabled = true;
+    showControllerLoc(null, 'Finding your location…');
+    const pos = await getPosition();
+    btn.disabled = false;
+    if (!pos) return showControllerLoc(location, 'Couldn’t get your location. Check that location is allowed for this app, or type the coordinates.');
+    location = pos;
+    locInput.value = coordsField(pos);
+    locInput.setCustomValidity('');
+    showControllerLoc(pos, pos.accuracy ? `Within about ${pos.accuracy} m.` : '');
+  };
+
+  const answer = await showDialog($('#controller-dialog'));
+  locInput.oninput = null;
+  if (answer !== 'ok' && answer !== 'delete') return;
+  const folder = await db.getFolder(current.id);
+  const list = folder.controllers || [];
+  if (answer === 'delete') {
+    if (!(await askConfirm('Delete controller', `Remove “${c.name}” from this property?`))) return;
+    await db.updateFolder(current.id, { controllers: list.filter((x) => x.id !== c.id) });
+    return render();
+  }
+  const zones = parseInt($('#controller-zones').value, 10);
+  const saved = {
+    id: c.id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`),
+    name: $('#controller-name').value.trim(),
+    location,
+    make: $('#controller-make').value.trim(),
+    model: $('#controller-model').value.trim(),
+    zones: zones > 0 ? zones : null,
+    water: $('#controller-water').value,
+    rainSensor: $('#controller-rain').value,
+    masterValve: $('#controller-master').value,
+    poc: $('#controller-poc').value.trim(),
+  };
+  const next = existing ? list.map((x) => (x.id === c.id ? saved : x)) : [...list, saved];
+  await db.updateFolder(current.id, { controllers: next });
+  render();
+}
+
+$('#add-controller').addEventListener('click', () => editController(null));
+
 $('#reset-profile').addEventListener('click', async () => {
   const ok = await askConfirm(
     'Reset property',
-    `Remove the contact, disclaimer and all custom issues and prices for “${current.record.name}”? It will use the main settings again. Existing reports keep their prices.`,
+    `Remove the contact, disclaimer and all custom issues and prices for “${current.record.name}”? It will use the main settings again. Controllers and existing reports’ prices stay.`,
     'Reset'
   );
   if (!ok) return;

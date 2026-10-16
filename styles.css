@@ -736,3 +736,12 @@ details.zone-group[open] > summary { grid-template-areas: "chev title status"; }
 details.zone-group:not([open]) + details.zone-group { margin-top: 0; }
 details.zone-group:not([open]) > .section-title { margin-top: 0; }
 #finding-groups > details.zone-group:first-child > .section-title { margin-top: 4px; }
+
+/* Controllers on the property profile */
+.controller-loc { display: flex; gap: 8px; align-items: center; }
+.controller-loc .field { flex: 1; min-width: 0; }
+.controller-loc .btn { flex: none; white-space: nowrap; }
+.controller-loc-status { margin: 4px 0 0; min-height: 1em; }
+.controller-loc-status a { color: var(--accent); }
+#controller-list:empty { display: none; }
+#controller-dialog select.field { width: 100%; }
