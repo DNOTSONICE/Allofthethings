@@ -253,6 +253,12 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   doc.rect(0, 0, 6, PAGE_H, 'F');
 
   y = 70;
+  // Company logo, centered at the top of the cover.
+  const logoBox = logoImg ? fitLogo(220, 80) : null;
+  if (logoBox) {
+    doc.addImage(logoImg.data, logoImg.format, (PAGE_W - logoBox.w) / 2, 36, logoBox.w, logoBox.h, undefined, 'FAST'); // PNGs are stored uncompressed otherwise
+    y = 36 + logoBox.h + 36;
+  }
   label('Wet check report', MARGIN, y, ACCENT, 9);
   y += 14;
 
@@ -312,8 +318,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
 
   // Space for the bottom block (stats + logo), so the photo can fill what's left.
   const statsH = 64;
-  const logoBox = logoImg ? fitLogo(200, 70) : null;
-  const bottomH = statsH + 26 + (logoBox ? logoBox.h + 34 : companyName ? 40 : 0);
+  const bottomH = statsH + 26 + (companyName ? 40 : 0);
   const bottomTop = PAGE_H - MARGIN - bottomH;
 
   const coverImg = propertyPhoto ? await loadImage(doc, propertyPhoto) : null;
@@ -358,22 +363,13 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   });
   sy += statsH + 26;
 
-  if (logoBox || companyName) {
+  if (companyName) {
     stroke(ACCENT, 1);
     doc.line(MARGIN, sy - 12, PAGE_W - MARGIN, sy - 12);
     label('Prepared by', MARGIN, sy + 4, MUTED, 7.5);
-    if (logoBox) {
-      doc.addImage(logoImg.data, logoImg.format, MARGIN, sy + 12, logoBox.w, logoBox.h, undefined, 'FAST'); // PNGs are stored uncompressed otherwise
-      if (companyName) {
-        font('bold', 12);
-        color(INK);
-        doc.text(companyName, PAGE_W - MARGIN, sy + 12 + logoBox.h / 2 + 4, { align: 'right' });
-      }
-    } else {
-      font('bold', 14);
-      color(INK);
-      doc.text(companyName, MARGIN, sy + 24);
-    }
+    font('bold', 14);
+    color(INK);
+    doc.text(companyName, MARGIN, sy + 24);
   }
   fill(ACCENT);
   doc.rect(0, PAGE_H - 6, PAGE_W, 6, 'F');
@@ -390,7 +386,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     doc.rect(MARGIN, y + 26, 40, 3, 'F');
     y += 44;
     for (const c of controllers) await controllerCard(c);
-    y += 10;
+    newPage(); // findings start on their own page
   }
 
 
@@ -429,6 +425,8 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   const tableRows = [];
 
   for (const [zone, items] of groups) {
+    // Every zone after the first starts on a fresh page, so each zone reads on its own.
+    if (zone !== groups[0][0]) newPage();
     ensure(34 + 140); // keep a zone heading with the start of its first finding
     zoneHeading(zone, items.length);
 
@@ -568,8 +566,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
 
   // ================= Summary table =================
   if (tableRows.length) {
-    ensure(110);
-    y += 4;
+    newPage(); // after the last zone, on its own page like each zone
     font('bold', 18);
     color(INK);
     doc.text('Summary of findings', MARGIN, y + 18);
