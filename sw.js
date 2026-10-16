@@ -1,6 +1,6 @@
 // Offline support: caches the app files so it opens without a connection.
 // Bump VERSION whenever any file below changes so phones pick up the update.
-const VERSION = 'v31';
+const VERSION = 'v32';
 const CACHE = `wetcheck-${VERSION}`;
 const FILES = [
   './',

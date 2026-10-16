@@ -461,6 +461,14 @@
   <dialog id="controller-dialog" class="full">
     <form data-ok>
       <h2 id="controller-title">Controller</h2>
+      <div class="controller-photo">
+        <img id="controller-photo-img" alt="Controller photo" hidden>
+        <div class="controller-photo-actions">
+          <label class="btn small outline"><input id="controller-camera" type="file" accept="image/*" capture="environment" hidden>Take photo</label>
+          <label class="btn small outline"><input id="controller-library" type="file" accept="image/*" hidden>Choose photo</label>
+          <button id="controller-photo-remove" type="button" class="btn small danger-text" hidden>Remove photo</button>
+        </div>
+      </div>
       <label class="label" for="controller-name">Name or area it covers</label>
       <input id="controller-name" class="field" type="text" required autocomplete="off" autocapitalize="sentences" maxlength="120" placeholder="e.g. Clubhouse, Phase 2 front entry">
       <label class="label" for="controller-location">GPS location</label>
@@ -512,8 +520,14 @@
           </select>
         </div>
       </div>
-      <label class="label" for="controller-poc">Point of connection</label>
-      <textarea id="controller-poc" class="field" rows="2" maxlength="300" placeholder="Where the system ties into the water supply, e.g. NE corner by the backflow"></textarea>
+      <label class="label" for="controller-poc-location">Point of connection</label>
+      <div class="controller-loc">
+        <input id="controller-poc-location" class="field" type="text" inputmode="decimal" autocomplete="off" maxlength="60" placeholder="Latitude, longitude">
+        <button id="controller-poc-here" type="button" class="btn small outline">Use my location</button>
+      </div>
+      <p id="controller-poc-status" class="hint controller-loc-status"></p>
+      <label class="label" for="controller-poc">Pump or backflow info</label>
+      <textarea id="controller-poc" class="field" rows="3" maxlength="500" placeholder="e.g. 2in Febco 825Y backflow, pump model, settings, enclosure"></textarea>
       <div class="actions">
         <button id="controller-delete" type="button" class="btn danger-text start" hidden>Delete</button>
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>

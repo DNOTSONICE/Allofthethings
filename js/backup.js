@@ -120,7 +120,12 @@ export async function createBackup(appVersion, folderId = null, { makePdf, progr
   for (const f of data.folders) {
     addDir(folderDir(f));
     if (f.photo instanceof Blob) add(`${folderDir(f)}Property photo.${extOf(f.photo)}`, f.photo);
-    if (f.controllers && f.controllers.length) add(`${folderDir(f)}Controllers.txt`, controllersText(f.controllers));
+    if (f.controllers && f.controllers.length) {
+      add(`${folderDir(f)}Controllers.txt`, controllersText(f.controllers));
+      f.controllers.forEach((c, i) => {
+        if (c.photo instanceof Blob) add(`${folderDir(f)}Controller photos/${fileSafe(`${String(i + 1).padStart(2, '0')} ${c.name}`)}.${extOf(c.photo)}`, c.photo);
+      });
+    }
   }
 
   // Reports: <folder>/<subdivision>/<date name>/ with the PDF and a Photos folder.
@@ -262,6 +267,7 @@ function controllersText(list) {
     ['Water source', water[c.water] || ''],
     ['Rain sensor', yn(c.rainSensor)],
     ['Master valve', yn(c.masterValve)],
-    ['Point of connection', c.poc],
+    ['Point of connection', c.pocLocation ? `${c.pocLocation.lat.toFixed(6)}, ${c.pocLocation.lon.toFixed(6)}` : ''],
+    ['Pump or backflow info', c.poc],
   ].map((x) => (Array.isArray(x) ? (x[1] ? `  ${x[0]}: ${x[1]}` : '') : x)).filter(Boolean).join('\n')).join('\n\n') + '\n';
 }

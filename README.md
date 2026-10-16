@@ -31,7 +31,7 @@ The starting list is `data/issues.json`, as named groups (Broken heads, Valve is
 Each top-level property has a **Property profile** (card on the property's screen, or its ⋮ menu) with:
 
 - a property contact (name, phone, email, address), printed on the cover of its reports;
-- its controllers, as many as the property has: name or area covered, GPS location (typed, or **Use my location**), make and model, number of zones, water source (municipal or pump fed), rain sensor, master valve, and where the point of connection is. Backups list them in the property's `Controllers.txt`;
+- its controllers, as many as the property has: a photo, name or area covered, GPS location (typed, or **Use my location**), make and model, number of zones, water source (municipal or pump fed), rain sensor, master valve, the point of connection's GPS location, and notes on the pump or backflow. Backups list them in the property's `Controllers.txt`, with photos in `Controller photos/`;
 - its own troubleshooting disclaimer, used instead of the main one, or the disclaimer turned on or off for just that property;
 - its own issues and prices: change a price or turn an issue off (marked **Custom**), or add issues only this property uses. Anything not changed keeps following the main list in Settings. Issue names can only be changed in Settings.
 

@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 31;
+const APP_VERSION = 32;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -1844,8 +1844,9 @@ $('#profile-disclaimer').addEventListener('click', async () => {
 
 // ---------- Controllers ----------
 // Kept on the property folder as folder.controllers (not in the profile, so resetting the
-// profile's settings leaves them alone): [{ id, name, location {lat, lon, accuracy?}, make,
-// model, zones, water 'municipal'|'pump', rainSensor 'yes'|'no', masterValve 'yes'|'no', poc }].
+// profile's settings leaves them alone): [{ id, name, photo (Blob), location {lat, lon, accuracy?}, make,
+// model, zones, water 'municipal'|'pump', rainSensor 'yes'|'no', masterValve 'yes'|'no', pocLocation
+// {lat, lon} (point of connection), poc (pump or backflow info) }].
 
 const WATER_LABELS = { municipal: 'Municipal water', pump: 'Pump fed' };
 
@@ -1860,10 +1861,22 @@ function controllerDetail(c) {
   ].filter(Boolean).join(' · ');
 }
 
+let controllerUrls = [];
+
 function renderControllers(list) {
+  controllerUrls.forEach((u) => URL.revokeObjectURL(u));
+  controllerUrls = [];
   $('#controller-empty').hidden = list.length > 0;
   $('#controller-list').replaceChildren(...list.map((c) => {
     const li = row({ icon: CONTROLLER_ICON, name: c.name, detail: controllerDetail(c) || 'Tap to add details.', href: '#' });
+    if (c.photo instanceof Blob) {
+      const img = document.createElement('img');
+      img.className = 'ico thumb';
+      img.alt = '';
+      img.src = URL.createObjectURL(c.photo);
+      controllerUrls.push(img.src);
+      li.querySelector('.row-open svg').replaceWith(img);
+    }
     li.querySelector('.row-open').addEventListener('click', (e) => {
       e.preventDefault();
       editController(c);
@@ -1882,25 +1895,57 @@ function parseCoords(text) {
 
 const coordsField = (loc) => (loc ? `${loc.lat.toFixed(6)}, ${loc.lon.toFixed(6)}` : '');
 
-function showControllerLoc(loc, note = '') {
-  const status = $('#controller-loc-status');
-  status.replaceChildren();
-  if (note) status.textContent = note;
-  if (loc) {
-    const a = document.createElement('a');
-    a.href = mapUrl(loc);
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.textContent = 'Open in maps';
-    status.append(note ? ' ' : '', a);
-  }
+// A "Latitude, longitude" box with a Use my location button and a map link under it.
+// Returns { value(), done() }; value() is { lat, lon, accuracy? } or null.
+function locationField(inputId, buttonId, statusId, initial) {
+  const input = $(`#${inputId}`);
+  const button = $(`#${buttonId}`);
+  const status = $(`#${statusId}`);
+  let loc = initial || null;
+  const show = (note = '') => {
+    status.replaceChildren();
+    if (note) status.textContent = note;
+    if (loc) {
+      const a = document.createElement('a');
+      a.href = mapUrl(loc);
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'Open in maps';
+      status.append(note ? ' ' : '', a);
+    }
+  };
+  input.value = coordsField(loc);
+  input.setCustomValidity('');
+  show();
+  input.oninput = () => {
+    const text = input.value.trim();
+    loc = text ? parseCoords(text) : null;
+    input.setCustomValidity(text && !loc ? 'Enter latitude, longitude, e.g. 33.4484, -112.0740' : '');
+    show();
+  };
+  button.onclick = async () => {
+    button.disabled = true;
+    const before = loc;
+    loc = null;
+    show('Finding your location…');
+    const pos = await getPosition();
+    button.disabled = false;
+    if (!pos) {
+      loc = before;
+      return show('Couldn’t get your location. Check that location is allowed for this app, or type the coordinates.');
+    }
+    loc = pos;
+    input.value = coordsField(pos);
+    input.setCustomValidity('');
+    show(pos.accuracy ? `Within about ${pos.accuracy} m.` : '');
+  };
+  return { value: () => loc, done: () => (input.oninput = button.onclick = null) };
 }
 
 async function editController(existing) {
   const c = existing || {};
   $('#controller-title').textContent = existing ? 'Edit controller' : 'Add controller';
   $('#controller-name').value = c.name || '';
-  $('#controller-location').value = coordsField(c.location);
   $('#controller-make').value = c.make || '';
   $('#controller-model').value = c.model || '';
   $('#controller-zones').value = c.zones || '';
@@ -1911,31 +1956,44 @@ async function editController(existing) {
   $('#controller-delete').hidden = !existing;
   $('#controller-delete').onclick = () => $('#controller-dialog').close('delete');
 
-  let location = c.location || null;
-  const locInput = $('#controller-location');
-  locInput.setCustomValidity('');
-  showControllerLoc(location);
-  locInput.oninput = () => {
-    const text = locInput.value.trim();
-    location = text ? parseCoords(text) : null;
-    locInput.setCustomValidity(text && !location ? 'Enter latitude, longitude, e.g. 33.4484, -112.0740' : '');
-    showControllerLoc(location);
+  let photo = c.photo instanceof Blob ? c.photo : null;
+  let photoUrl = null;
+  const showPhoto = () => {
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    photoUrl = photo ? URL.createObjectURL(photo) : null;
+    const img = $('#controller-photo-img');
+    img.hidden = !photo;
+    if (photo) img.src = photoUrl;
+    else img.removeAttribute('src');
+    $('#controller-photo-remove').hidden = !photo;
   };
-  $('#controller-here').onclick = async () => {
-    const btn = $('#controller-here');
-    btn.disabled = true;
-    showControllerLoc(null, 'Finding your location…');
-    const pos = await getPosition();
-    btn.disabled = false;
-    if (!pos) return showControllerLoc(location, 'Couldn’t get your location. Check that location is allowed for this app, or type the coordinates.');
-    location = pos;
-    locInput.value = coordsField(pos);
-    locInput.setCustomValidity('');
-    showControllerLoc(pos, pos.accuracy ? `Within about ${pos.accuracy} m.` : '');
+  const onPhoto = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      photo = await compressPhoto(file);
+    } catch {
+      return;
+    }
+    showPhoto();
   };
+  $('#controller-camera').onchange = onPhoto;
+  $('#controller-library').onchange = onPhoto;
+  $('#controller-photo-remove').onclick = () => {
+    photo = null;
+    showPhoto();
+  };
+  showPhoto();
+
+  const spot = locationField('controller-location', 'controller-here', 'controller-loc-status', c.location);
+  const pocSpot = locationField('controller-poc-location', 'controller-poc-here', 'controller-poc-status', c.pocLocation);
 
   const answer = await showDialog($('#controller-dialog'));
-  locInput.oninput = null;
+  spot.done();
+  pocSpot.done();
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  $('#controller-photo-img').removeAttribute('src');
   if (answer !== 'ok' && answer !== 'delete') return;
   const folder = await db.getFolder(current.id);
   const list = folder.controllers || [];
@@ -1948,14 +2006,16 @@ async function editController(existing) {
   const saved = {
     id: c.id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`),
     name: $('#controller-name').value.trim(),
-    location,
+    photo,
+    location: spot.value(),
     make: $('#controller-make').value.trim(),
     model: $('#controller-model').value.trim(),
     zones: zones > 0 ? zones : null,
     water: $('#controller-water').value,
     rainSensor: $('#controller-rain').value,
     masterValve: $('#controller-master').value,
-    poc: $('#controller-poc').value.trim(),
+    pocLocation: pocSpot.value(),
+    poc: $('#controller-poc').value.trim(), // pump or backflow info
   };
   const next = existing ? list.map((x) => (x.id === c.id ? saved : x)) : [...list, saved];
   await db.updateFolder(current.id, { controllers: next });

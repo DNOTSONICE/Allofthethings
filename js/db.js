@@ -79,6 +79,10 @@ async function detachBlobs(record) {
   for (const [k, v] of Object.entries(out)) {
     if (v instanceof Blob) out[k] = await freshBlob(v);
     else if (Array.isArray(v) && v.some((x) => x instanceof Blob)) out[k] = await Promise.all(v.map((x) => (x instanceof Blob ? freshBlob(x) : x)));
+    // Lists of records holding photos (a property's controllers).
+    else if (Array.isArray(v) && v.some((x) => x && typeof x === 'object' && Object.values(x).some((y) => y instanceof Blob))) {
+      out[k] = await Promise.all(v.map((x) => (x && typeof x === 'object' && !(x instanceof Blob) ? detachBlobs(x) : x)));
+    }
   }
   return out;
 }

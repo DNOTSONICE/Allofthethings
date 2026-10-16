@@ -745,3 +745,8 @@ details.zone-group:not([open]) > .section-title { margin-top: 0; }
 .controller-loc-status a { color: var(--accent); }
 #controller-list:empty { display: none; }
 #controller-dialog select.field { width: 100%; }
+.controller-photo { margin: 4px 0 8px; }
+.controller-photo img { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; margin-bottom: 8px; background: var(--bg, #f3f4f6); }
+.controller-photo-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.controller-photo-actions .danger-text { margin-left: auto; }
+.row-open img.ico.thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
