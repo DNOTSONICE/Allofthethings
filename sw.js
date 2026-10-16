@@ -1,6 +1,6 @@
 // Offline support: caches the app files so it opens without a connection.
 // Bump VERSION whenever any file below changes so phones pick up the update.
-const VERSION = 'v39';
+const VERSION = 'v40';
 const CACHE = `wetcheck-${VERSION}`;
 const FILES = [
   './',
@@ -48,15 +48,41 @@ self.addEventListener('activate', (e) => {
 // Network first so updates show up when online; fall back to the cache offline.
 // cache: 'no-cache' checks with the server every time instead of trusting GitHub Pages'
 // 10-minute browser cache, which could pair a new page with old scripts.
+// A connection that is back but barely working can leave a request hanging, so after a few
+// seconds the cached copy is used instead. Only page loads fall back to index.html: a
+// script answered with a page would break the feature that asked for it.
+const NETWORK_WAIT = 4000;
+
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    fetch(e.request, { cache: 'no-cache' })
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-        return res;
-      })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('./index.html')))
-  );
+  const cached = () => caches.match(e.request, { ignoreSearch: true })
+    .then((r) => r || (e.request.mode === 'navigate' ? caches.match('./index.html') : undefined));
+  const network = fetch(e.request, { cache: 'no-cache' }).then((res) => {
+    if (res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(e.request, copy));
+    }
+    return res;
+  });
+  e.respondWith(new Promise((resolve, reject) => {
+    let done = false;
+    const finish = (r) => {
+      if (!done && r) {
+        done = true;
+        resolve(r);
+      }
+    };
+    const fallback = () => cached().then((r) => {
+      if (r) finish(r);
+      else network.then(finish, () => !done && reject(new TypeError('offline')));
+    });
+    const timer = setTimeout(fallback, NETWORK_WAIT);
+    network.then((r) => {
+      clearTimeout(timer);
+      finish(r);
+    }, () => {
+      clearTimeout(timer);
+      fallback();
+    });
+  }));
 });

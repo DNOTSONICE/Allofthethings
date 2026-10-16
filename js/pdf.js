@@ -7,16 +7,27 @@ import { formatMoney } from './issues.js';
 let libPromise = null;
 
 // jsPDF is a plain script, so it's loaded on first export rather than at startup.
+// A load that fails or stalls (a flaky connection just after going back online) is
+// forgotten, so the next export tries again instead of waiting until the app restarts.
 function loadJsPdf() {
+  if (window.jspdf) return Promise.resolve(window.jspdf.jsPDF);
   if (!libPromise) {
     libPromise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = './js/vendor/jspdf.umd.min.js';
-      s.onload = () => resolve(window.jspdf.jsPDF);
-      s.onerror = () => {
+      const fail = () => {
+        clearTimeout(timer);
+        s.remove();
         libPromise = null;
-        reject(new Error('Could not load the PDF tool'));
+        reject(new Error('Could not load the PDF tool. Try again.'));
       };
+      const timer = setTimeout(fail, 20000);
+      s.src = './js/vendor/jspdf.umd.min.js';
+      s.onload = () => {
+        if (!window.jspdf) return fail();
+        clearTimeout(timer);
+        resolve(window.jspdf.jsPDF);
+      };
+      s.onerror = fail;
       document.head.append(s);
     });
   }
