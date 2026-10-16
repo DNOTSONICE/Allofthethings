@@ -695,3 +695,44 @@ dialog.sigpad { width: min(96vw, 640px); }
 /* No double-tap zoom anywhere; pinch zoom is blocked in app.js and the viewport meta. */
 html, body { touch-action: pan-x pan-y; }
 button, a, input, select, textarea, label { touch-action: manipulation; }
+
+/* Zones fold up in a report */
+details.zone-group > summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "chev title status" ". sum sum";
+  align-items: center;
+  column-gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 4px;
+  margin-left: 0;
+  margin-right: 0;
+  border-radius: 10px;
+}
+details.zone-group > summary::-webkit-details-marker { display: none; }
+details.zone-group > summary::before {
+  grid-area: chev;
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  margin: 0 3px;
+}
+details.zone-group[open] > summary::before { transform: rotate(45deg); }
+details.zone-group:not([open]) > summary { background: var(--surface); margin-bottom: 8px; padding: 12px 10px; }
+.zone-title { grid-area: title; min-width: 0; }
+.zone-status { grid-area: status; display: flex; }
+.zone-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; border: 2px solid; background: #fff; }
+.zone-mark svg { width: 16px; height: 16px; }
+.zone-mark.ok { color: #1f9d55; }
+.zone-mark.fail { color: #d32f2f; }
+.zone-summary { grid-area: sum; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.zone-group[open] > summary .zone-summary { display: none; }
+details.zone-group[open] > summary { grid-template-areas: "chev title status"; }
+details.zone-group:not([open]) + details.zone-group { margin-top: 0; }
+details.zone-group:not([open]) > .section-title { margin-top: 0; }
+#finding-groups > details.zone-group:first-child > .section-title { margin-top: 4px; }

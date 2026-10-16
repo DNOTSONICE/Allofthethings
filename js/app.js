@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 27;
+const APP_VERSION = 28;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -700,6 +700,25 @@ const byZone = (a, b) => {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 };
 
+// Zones opened or closed by hand in a report, until its working zone changes.
+const foldState = { reportId: null, zone: null, folds: new Map() };
+function zoneFolds(reportId, zone) {
+  if (foldState.reportId !== reportId || foldState.zone !== zone) {
+    Object.assign(foldState, { reportId, zone, folds: new Map() });
+  }
+  return foldState.folds;
+}
+
+function markIcon(kind) {
+  const s = document.createElement('span');
+  s.className = `zone-mark ${kind}`;
+  s.innerHTML = kind === 'ok'
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+  s.setAttribute('aria-label', kind === 'ok' ? 'No issues found' : 'Valve not opening');
+  return s;
+}
+
 // [[zone, findings], ...] in zone order; findings keep the order they were added.
 function groupByZone(findings) {
   const groups = new Map();
@@ -736,16 +755,39 @@ async function renderReport(id) {
   const list = report.estimate ? await issueListFor(report.folderId) : null;
   renderEstimateBar(report, findings, list);
 
+  // Zones fold up so the list stays short: the zone being worked in is open, the rest show
+  // just a heading until tapped. A zone opened or closed by hand stays that way until the
+  // working zone changes.
+  const folds = zoneFolds(report.id, zone);
+  const focusZone = focusFinding ? (findings.find((f) => f.id === focusFinding) || {}).zone : undefined;
+  if (focusZone !== undefined) folds.set(focusZone || '', true);
   const sections = groupByZone(findings).map(([z, items]) => {
-    const section = document.createElement('section');
+    const section = document.createElement('details');
     section.className = 'zone-group' + (z === zone ? ' current' : '');
-    const h = document.createElement('h2');
+    const isDefault = z === zone;
+    section.open = folds.has(z) ? folds.get(z) : isDefault;
+    const h = document.createElement('summary');
     h.className = 'section-title';
-    h.textContent = `${zoneName(z)} · ${plural(items.length, 'finding')}`;
+    const title = document.createElement('span');
+    title.className = 'zone-title';
+    title.textContent = `${zoneName(z)} · ${plural(items.length, 'finding')}`;
+    const marks = items.filter((f) => f.mark).map((f) => f.mark);
+    const status = document.createElement('span');
+    status.className = 'zone-status';
+    if (marks.includes('fail')) status.append(markIcon('fail'));
+    else if (marks.length === items.length) status.append(markIcon('ok')); // only checks in this zone
+    const summary = document.createElement('span');
+    summary.className = 'zone-summary';
+    summary.textContent = items.map((f) => f.issue).join(', ');
+    h.append(title, status, summary);
     const ul = document.createElement('ul');
     ul.className = 'cards';
     ul.append(...items.map((f, i) => findingCard(f, i + 1, list, report.prices)));
     section.append(h, ul);
+    section.addEventListener('toggle', () => {
+      if (section.open === isDefault) folds.delete(z);
+      else folds.set(z, section.open);
+    });
     return section;
   });
   $('#finding-groups').replaceChildren(...sections);
@@ -2094,6 +2136,8 @@ async function addFinding() {
   const { result, fields } = await openFindingForm(null);
   if (result !== 'ok') return;
   const saved = await db.saveFinding(current.id, fields);
+  // Keep the new finding's zone open even if it isn't the zone being worked in.
+  if (saved.zone !== zoneOf(current.record)) zoneFolds(current.id, zoneOf(current.record)).set(saved.zone || '', true);
   await render();
   // Show the finding just added.
   const card = document.querySelector(`[data-id="${saved.id}"]`);
@@ -2181,10 +2225,19 @@ async function addMark(kind) {
       mark: kind,
     };
     const saved = await db.saveFinding(report.id, fields);
+    const marked = `${zone ? zoneName(zone) : 'Zone'} marked: ${MARKS[kind].toast}.`;
+    if (kind === 'ok') {
+      // Nothing to log in a zone that passed, so go straight on to the next one.
+      const next = stepZone(zone, 1);
+      current.record = await db.updateReport(report.id, { currentZone: next });
+      await render();
+      showToast(`${marked} Now in ${zoneName(next)}.`, 'ok');
+      return;
+    }
     await render();
     const card = document.querySelector(`[data-id="${saved.id}"]`);
     if (card) card.scrollIntoView({ block: 'center' });
-    showToast(`${zone ? zoneName(zone) : 'Zone'} marked: ${MARKS[kind].toast}. Tap it to edit.`, 'ok');
+    showToast(`${marked} Tap it to edit.`, 'ok');
   } finally {
     marking = false;
     $('#mark-ok').disabled = $('#mark-fail').disabled = false;
