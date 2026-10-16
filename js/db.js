@@ -56,44 +56,89 @@ function newId() {
 
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 
+// Photos are stored as plain bytes ({ $bytes, type }) rather than as Blobs. Safari keeps
+// stored Blobs as separate files that it can lose: a photo written back after an edit, and
+// photos restored from a backup on an iPad, turned into question marks. Bytes live inside
+// the record itself, so they can't go missing. Records saved earlier still hold Blobs;
+// they read the same way and switch to bytes the next time they're saved.
+const plain = (v) => v && typeof v === 'object' && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype);
+
+async function pack(value) {
+  if (value instanceof Blob) {
+    try {
+      return { $bytes: await value.arrayBuffer(), type: value.type };
+    } catch {
+      return value; // already unreadable: nothing left to copy
+    }
+  }
+  if (Array.isArray(value)) return Promise.all(value.map(pack));
+  if (plain(value)) {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = await pack(v);
+    return out;
+  }
+  return value;
+}
+
+function unpack(value) {
+  if (Array.isArray(value)) return value.map(unpack);
+  if (plain(value)) {
+    if (value.$bytes instanceof ArrayBuffer) return new Blob([value.$bytes], { type: value.type || '' });
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = unpack(v);
+    return out;
+  }
+  return value;
+}
+
 async function get(store, id) {
   const db = await openDb();
-  return promisify(db.transaction(store).objectStore(store).get(id));
+  return unpack(await promisify(db.transaction(store).objectStore(store).get(id)));
 }
 
 async function getAllBy(store, index, key) {
   const db = await openDb();
-  return promisify(db.transaction(store).objectStore(store).index(index).getAll(key));
-}
-
-// Safari can lose a photo when a Blob read from the database is written back into it
-// (editing a finding saves its existing photo again): the new record points at the old
-// photo's storage, which Safari then deletes. Copying each Blob's bytes into a fresh
-// Blob first gives the new record its own copy.
-async function freshBlob(b) {
-  return new Blob([await b.arrayBuffer()], { type: b.type });
-}
-
-async function detachBlobs(record) {
-  const out = { ...record };
-  for (const [k, v] of Object.entries(out)) {
-    if (v instanceof Blob) out[k] = await freshBlob(v);
-    else if (Array.isArray(v) && v.some((x) => x instanceof Blob)) out[k] = await Promise.all(v.map((x) => (x instanceof Blob ? freshBlob(x) : x)));
-    // Lists of records holding photos (a property's controllers).
-    else if (Array.isArray(v) && v.some((x) => x && typeof x === 'object' && Object.values(x).some((y) => y instanceof Blob))) {
-      out[k] = await Promise.all(v.map((x) => (x && typeof x === 'object' && !(x instanceof Blob) ? detachBlobs(x) : x)));
-    }
-  }
-  return out;
+  return unpack(await promisify(db.transaction(store).objectStore(store).index(index).getAll(key)));
 }
 
 async function put(store, record) {
-  record = await detachBlobs(record);
+  const packed = await pack(record);
   const db = await openDb();
   const tx = db.transaction(store, 'readwrite');
-  tx.objectStore(store).put(record);
+  tx.objectStore(store).put(packed);
   await txDone(tx);
   return record;
+}
+
+// Rewrites records saved before photos were stored as bytes, one at a time so a large
+// collection never sits in memory at once. Runs in the background once per device; a
+// record changed meanwhile is left for its own save to convert.
+export async function storePhotosAsBytes() {
+  if (await getSetting('photosAsBytes')) return;
+  const db = await openDb();
+  for (const store of ['folders', 'reports', 'findings', 'settings']) {
+    const keys = await promisify(db.transaction(store).objectStore(store).getAllKeys());
+    for (const key of keys) {
+      const raw = await promisify(db.transaction(store).objectStore(store).get(key));
+      if (!hasBlob(raw)) continue;
+      const packed = await pack(raw);
+      const tx = db.transaction(store, 'readwrite');
+      const os = tx.objectStore(store);
+      os.get(key).onsuccess = (e) => {
+        const now = e.target.result;
+        if (now && hasBlob(now) && (now.updatedAt || 0) === (raw.updatedAt || 0)) os.put(packed);
+      };
+      await txDone(tx);
+    }
+  }
+  await setSetting('photosAsBytes', true);
+}
+
+function hasBlob(v) {
+  if (v instanceof Blob) return true;
+  if (Array.isArray(v)) return v.some(hasBlob);
+  if (plain(v)) return Object.values(v).some(hasBlob);
+  return false;
 }
 
 // ---------- Folders ----------
@@ -284,7 +329,7 @@ export async function setSetting(key, value) {
 
 async function getAll(store) {
   const db = await openDb();
-  return promisify(db.transaction(store).objectStore(store).getAll());
+  return unpack(await promisify(db.transaction(store).objectStore(store).getAll()));
 }
 
 // Every record in the app, for a full backup.
@@ -304,6 +349,49 @@ export async function dumpFolder(id) {
   return { folders, reports, findings, settings: [] };
 }
 
+async function readable(b) {
+  try {
+    if (!b.size || !(await b.arrayBuffer()).byteLength) return false;
+    if (b.type.startsWith('image/') && self.createImageBitmap) (await createImageBitmap(b)).close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// old with each unreadable photo swapped for the backup's copy, or null if none needed it.
+async function repairBlobs(old, rec) {
+  let changed = false;
+  const fix = async (mine, theirs) => {
+    if (mine instanceof Blob) {
+      if (theirs instanceof Blob && !(await readable(mine))) {
+        changed = true;
+        return theirs;
+      }
+      return mine;
+    }
+    if (Array.isArray(mine) && Array.isArray(theirs)) {
+      const out = [];
+      for (let i = 0; i < mine.length; i++) {
+        const x = mine[i];
+        // Lists of records (a property's controllers) are matched by id, photo lists by position.
+        const match = x && typeof x === 'object' && !(x instanceof Blob) && x.id ? theirs.find((t) => t && t.id === x.id) : theirs[i];
+        out.push(await fix(x, match));
+      }
+      return out;
+    }
+    if (mine && typeof mine === 'object' && theirs && typeof theirs === 'object' && Object.values(mine).some((v) => v instanceof Blob)) {
+      const out = { ...mine };
+      for (const [k, v] of Object.entries(mine)) out[k] = await fix(v, theirs[k]);
+      return out;
+    }
+    return mine;
+  };
+  const out = { ...old };
+  for (const [k, v] of Object.entries(old)) out[k] = await fix(v, rec[k]);
+  return changed ? out : null;
+}
+
 // Writes backup records in one transaction. With replace, everything already on the
 // device is cleared first; otherwise records are added, and where the same item exists
 // on both sides the more recently changed copy wins.
@@ -319,24 +407,35 @@ export async function restore({ folders = [], reports = [], findings = [], setti
   }
   const folderIds = new Set([...(existing.folders ? existing.folders.keys() : []), ...folders.map((f) => f.id)]);
 
-  const tx = db.transaction(stores, 'readwrite');
-  if (replace) for (const s of stores) tx.objectStore(s).clear();
-  let written = 0;
-  const write = (store, rec) => {
+  // Work out every write first: checking photos needs awaits, which would end the transaction.
+  const writes = [];
+  const add = async (store, rec) => {
     const old = existing[store] && existing[store].get(rec.id);
-    if (old && (old.updatedAt || 0) > (rec.updatedAt || 0)) return; // keep the newer copy on this device
-    tx.objectStore(store).put(rec);
-    written++;
+    if (old && (old.updatedAt || 0) > (rec.updatedAt || 0)) {
+      // Keep the newer copy on this device, but take the backup's photo wherever this
+      // device's copy of it can no longer be read.
+      const fixed = await repairBlobs(old, rec);
+      if (fixed) writes.push([store, fixed]);
+      return;
+    }
+    writes.push([store, rec]);
   };
   for (const f of folders) {
     // A property backup's top folder lands at the top level if its old parent isn't here.
     const parentId = f.parentId === ROOT || folderIds.has(f.parentId) ? f.parentId : ROOT;
-    write('folders', { ...f, parentId });
+    await add('folders', { ...f, parentId });
   }
-  for (const r of reports) write('reports', r);
-  for (const f of findings) write('findings', f);
+  for (const r of reports) await add('reports', r);
+  for (const f of findings) await add('findings', f);
+
   // When adding, this device's own logo, color and so on stay; the backup only fills gaps.
-  for (const s of settings) if (replace || !existing.settingKeys.has(s.key)) tx.objectStore('settings').put(s);
+  for (const s of settings) if (replace || !existing.settingKeys.has(s.key)) writes.push(['settings', s]);
+  for (const w of writes) w[1] = await pack(w[1]);
+
+  const tx = db.transaction(stores, 'readwrite');
+  if (replace) for (const s of stores) tx.objectStore(s).clear();
+  for (const [store, rec] of writes) tx.objectStore(store).put(rec);
+  const written = writes.filter(([store]) => store !== 'settings').length;
   await txDone(tx);
   return written;
 }
