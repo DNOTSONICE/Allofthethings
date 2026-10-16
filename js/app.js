@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
+import { showDialog, askName, askAction, askConfirm, plural, formatDate, today, WATER_SOURCES } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
 import { loadIssueList, saveIssueList, addNewDefaults, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot, discountAmount, discountLabel } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 36;
+const APP_VERSION = 37;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -1930,10 +1930,10 @@ $('#profile-disclaimer').addEventListener('click', async () => {
 // ---------- Controllers ----------
 // Kept on the property folder as folder.controllers (not in the profile, so resetting the
 // profile's settings leaves them alone): [{ id, name, photo (Blob), location {lat, lon, accuracy?}, make,
-// model, zones, water 'municipal'|'pump', rainSensor 'yes'|'no', masterValve 'yes'|'no', pocLocation
+// model, zones, water (a WATER_SOURCES key), rainSensor 'yes'|'no', masterValve 'yes'|'no', pocLocation
 // {lat, lon} (point of connection), poc (pump or backflow info) }].
 
-const WATER_LABELS = { municipal: 'Municipal water', pump: 'Pump fed' };
+const WATER_LABELS = { ...WATER_SOURCES, municipal: 'Municipal water' };
 
 function controllerDetail(c) {
   const makeModel = [c.make, c.model].filter(Boolean).join(' ');
@@ -2034,6 +2034,9 @@ async function editController(existing) {
   $('#controller-make').value = c.make || '';
   $('#controller-model').value = c.model || '';
   $('#controller-zones').value = c.zones || '';
+  // Controllers saved before the pump type was asked keep plain "Pump" until one is picked.
+  const oldPump = $('#controller-water option[value="pump"]');
+  oldPump.hidden = oldPump.disabled = c.water !== 'pump';
   $('#controller-water').value = c.water || '';
   $('#controller-rain').value = c.rainSensor || '';
   $('#controller-master').value = c.masterValve || '';

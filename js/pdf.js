@@ -1,7 +1,7 @@
 // Builds the wet check report PDF on the device (no upload), using jsPDF.
 
 import { coordsText, stampDetails } from './location.js';
-import { formatDate } from './ui.js';
+import { formatDate, WATER_SOURCES } from './ui.js';
 import { formatMoney } from './issues.js';
 
 let libPromise = null;
@@ -170,7 +170,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     const facts = [
       ['Make / model', [c.make, c.model].filter(Boolean).join(' ') || 'Not set'],
       ['Zones', c.zones ? String(c.zones) : 'Not set'],
-      ['Water', c.water === 'pump' ? 'Pump fed' : c.water === 'municipal' ? 'Municipal' : 'Not set'],
+      ['Water', WATER_SOURCES[c.water] || 'Not set'],
       ['Rain sensor', yesNo(c.rainSensor)],
       ['Master valve', yesNo(c.masterValve)],
     ];

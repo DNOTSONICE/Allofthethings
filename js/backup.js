@@ -4,6 +4,7 @@
 
 import * as db from './db.js';
 import { makeZip, readZip, isZip } from './zip.js';
+import { WATER_SOURCES } from './ui.js';
 
 const APP = 'wetcheck';
 const FORMAT = 1;
@@ -257,7 +258,7 @@ export function restoreBackup(backup, { replace }) {
 // The property's controllers, readable without the app.
 function controllersText(list) {
   const yn = (v) => (v === 'yes' ? 'Yes' : v === 'no' ? 'No' : '');
-  const water = { municipal: 'Municipal', pump: 'Pump fed' };
+  const water = WATER_SOURCES;
   return list.map((c) => [
     c.name,
     ['GPS location', c.location ? `${c.location.lat.toFixed(6)}, ${c.location.lon.toFixed(6)}` : ''],

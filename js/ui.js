@@ -52,6 +52,16 @@ export async function askConfirm(title, text, okLabel = 'Delete') {
   return (await showDialog($('#confirm-dialog'))) === 'ok';
 }
 
+// A controller's water source. 'pump' is from before the pump type was asked; it shows as
+// plain "Pump" until the controller is edited.
+export const WATER_SOURCES = {
+  municipal: 'Municipal',
+  'pump-well': 'Pump well',
+  'pump-canal': 'Pump canal',
+  'pump-lake': 'Pump lake',
+  pump: 'Pump',
+};
+
 export function plural(n, word) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
