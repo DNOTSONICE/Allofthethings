@@ -239,9 +239,15 @@
       <h2 id="report-dialog-title">New wet check report</h2>
       <label class="label" for="report-name">Report name</label>
       <input id="report-name" class="field" type="text" autocomplete="off" autocapitalize="sentences" required maxlength="120">
-      <label class="label" for="report-subdivision">Subdivision <span class="optional">(optional)</span></label>
-      <input id="report-subdivision" class="field" type="text" autocomplete="off" autocapitalize="words" maxlength="120" list="subdivision-options">
-      <datalist id="subdivision-options"></datalist>
+      <div id="report-controller-box">
+        <label class="label" for="report-controller">Controller</label>
+        <select id="report-controller" class="field"></select>
+      </div>
+      <p id="report-controller-hint" class="hint" hidden>Add this property's controllers in its profile to pick one here.</p>
+      <div id="report-subdivision-box" hidden>
+        <label class="label" for="report-subdivision">Subdivision <span class="optional">(older reports)</span></label>
+        <input id="report-subdivision" class="field" type="text" autocomplete="off" autocapitalize="words" maxlength="120">
+      </div>
       <label class="label" for="report-date">Date</label>
       <input id="report-date" class="field" type="date" required>
       <label class="check report-estimate">

@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 33;
+const APP_VERSION = 34;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -142,13 +142,15 @@ async function renderFolder(id) {
 // its own section after them (A to Z), which can be folded away. Subdivision names match
 // regardless of capitals and spaces.
 const subKey = (name) => (name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+// Reports are grouped by their controller; older reports by the subdivision typed on them.
+const groupOf = (r) => r.controllerName || r.subdivision || '';
 
 function subdivisionGroups(reports) {
   const groups = new Map();
   for (const r of reports) {
-    const key = subKey(r.subdivision);
+    const key = subKey(groupOf(r));
     if (!key) continue;
-    const name = r.subdivision.trim().replace(/\s+/g, ' ');
+    const name = groupOf(r).trim().replace(/\s+/g, ' ');
     if (!groups.has(key)) groups.set(key, { key, name, reports: [] });
     const g = groups.get(key);
     if (g.name === g.name.toLowerCase() && name !== name.toLowerCase()) g.name = name; // show a capitalized spelling if any
@@ -176,7 +178,7 @@ function setFolded(id, folded) {
 
 function renderReportGroups(folderId, reports) {
   const out = [];
-  const loose = reports.filter((r) => !subKey(r.subdivision));
+  const loose = reports.filter((r) => !subKey(groupOf(r)));
   const groups = subdivisionGroups(reports);
   if (loose.length) {
     const h = document.createElement('h2');
@@ -298,7 +300,7 @@ function runSearch() {
   if (!ws.length) {
     $('#search-results').replaceChildren();
     empty.hidden = false;
-    empty.textContent = 'Search by property, folder, subdivision, report name or date, issue, zone, or note.';
+    empty.textContent = 'Search by property, folder, controller, report name or date, issue, zone, or note.';
     return;
   }
   const { folders, reports, findings, scope } = searchData;
@@ -342,7 +344,7 @@ function runSearch() {
   const scoped = reports.filter((r) => inScope(r.folderId));
   const subHits = [];
   const byFolder = new Map();
-  for (const r of scoped) if (subKey(r.subdivision)) (byFolder.get(r.folderId) || byFolder.set(r.folderId, []).get(r.folderId)).push(r);
+  for (const r of scoped) if (subKey(groupOf(r))) (byFolder.get(r.folderId) || byFolder.set(r.folderId, []).get(r.folderId)).push(r);
   for (const [folderId, rs] of byFolder) {
     for (const g of subdivisionGroups(rs)) {
       if (!matches(g.key, ws)) continue;
@@ -351,7 +353,7 @@ function runSearch() {
   }
   subHits.sort((a, b) => a.g.name.localeCompare(b.g.name, undefined, { numeric: true }));
   section(
-    'Subdivisions',
+    'Controllers and subdivisions',
     subHits.map(({ g, folderId }) => () => {
       const li = resultRow({ icon: FOLDER_ICON, name: g.name, detail: `${where(folderId)} · ${plural(g.reports.length, 'report')}`, href: folderHref(folderId) }, ws);
       li.querySelector('a').addEventListener('click', () => setFolded(`${folderId}|${g.key}`, false));
@@ -361,10 +363,10 @@ function runSearch() {
 
   // Reports
   const reportHits = scoped
-    .filter((r) => matches(norm([r.name, r.subdivision, r.date, formatDate(r.date)].join(' ')), ws))
+    .filter((r) => matches(norm([r.name, groupOf(r), r.date, formatDate(r.date)].join(' ')), ws))
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((r) => () =>
-      resultRow({ icon: REPORT_ICON, name: r.name, detail: [where(r.folderId), r.subdivision, formatDate(r.date)].filter(Boolean).join(' · '), href: reportHref(r.id) }, ws)
+      resultRow({ icon: REPORT_ICON, name: r.name, detail: [where(r.folderId), groupOf(r), formatDate(r.date)].filter(Boolean).join(' · '), href: reportHref(r.id) }, ws)
     );
   section('Reports', reportHits);
 
@@ -593,7 +595,7 @@ function folderRow(folder) {
   });
 }
 
-const reportDetail = (r) => [formatDate(r.date), r.subdivision].filter(Boolean).join(' · ');
+const reportDetail = (r) => [formatDate(r.date), groupOf(r)].filter(Boolean).join(' · ');
 
 function reportRow(report, grouped = false) {
   return row({
@@ -671,11 +673,12 @@ async function newInFolder() {
   }
   if (action === 'report') {
     const estimate = !!(await db.getSetting('estimateDefault')); // last choice made
-    const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate }, folderId);
+    const details = await askReportDetails('New wet check report', 'Create', { name: 'Wet check', date: today(), estimate }, folderId, { isNew: true });
     if (!details) return;
     await db.setSetting('estimateDefault', details.estimate);
     const prices = priceSnapshot(await issueListFor(folderId)); // locked in for this report
-    const report = await db.createReport(folderId, details.name, details.date, { estimate: details.estimate, subdivision: details.subdivision, prices });
+    const { name, date, ...extra } = details;
+    const report = await db.createReport(folderId, name, date, { ...extra, prices });
     location.hash = reportHref(report.id);
   }
 }
@@ -1057,7 +1060,11 @@ async function reportPdf(report) {
     accent: accent || DEFAULT_ACCENT,
     contact: profile && profile.contact ? profile.contact : null,
     signature: await signatureFor(report),
-    controllers: path.length ? path[0].controllers || [] : [],
+    // The report's own controller, or all of the property's for a whole-property report.
+    controllers: (() => {
+      const all = path.length ? path[0].controllers || [] : [];
+      return report.controllerId ? all.filter((c) => c.id === report.controllerId) : all;
+    })(),
     groups: groupByZone(findings),
     zoneName,
   });
@@ -1291,26 +1298,48 @@ $('#restore-file').addEventListener('change', async (e) => {
   showToast(`Restored ${countsText(backup.counts)}.`, 'ok');
 });
 
-async function askReportDetails(title, submitLabel, initial, folderId) {
-  // Offer the subdivisions already used in this folder, so the same name groups together.
-  const used = subdivisionGroups(await db.listReports(folderId)).map((g) => {
-    const o = document.createElement('option');
-    o.value = g.name;
-    return o;
-  });
-  $('#subdivision-options').replaceChildren(...used);
+// Report name, date, estimate, and which of the property's controllers it covers. A new
+// report asks for a controller when the property has any; "Whole property" covers them all.
+async function askReportDetails(title, submitLabel, initial, folderId, { isNew = false } = {}) {
+  const property = await propertyFolder(folderId);
+  const controllers = (property && property.controllers) || [];
+  const select = $('#report-controller');
+  const opt = (value, text, extra = {}) => Object.assign(document.createElement('option'), { value, textContent: text, ...extra });
+  const known = controllers.some((c) => c.id === initial.controllerId);
+  select.replaceChildren(
+    ...(isNew ? [opt('', 'Choose a controller', { disabled: true })] : []),
+    ...controllers.map((c) => opt(c.id, c.zones ? `${c.name} (${plural(c.zones, 'zone')})` : c.name)),
+    // A report whose controller was later deleted keeps its name.
+    ...(initial.controllerId && !known ? [opt(initial.controllerId, `${initial.controllerName || 'Controller'} (deleted)`)] : []),
+    opt('none', 'Whole property, no single controller')
+  );
+  select.value = initial.controllerId || (isNew ? (controllers.length === 1 ? controllers[0].id : '') : 'none');
+  select.required = isNew && controllers.length > 0;
+  $('#report-controller-box').hidden = !controllers.length && !initial.controllerId;
+  $('#report-controller-hint').hidden = controllers.length > 0 || !!initial.controllerId;
+  // Subdivisions are no longer asked for; older reports that have one can still change it.
+  $('#report-subdivision-box').hidden = !initial.subdivision;
+  $('#report-subdivision').value = initial.subdivision || '';
+
   $('#report-dialog-title').textContent = title;
   $('#report-submit').textContent = submitLabel;
   $('#report-name').value = initial.name;
   $('#report-date').value = initial.date;
-  $('#report-subdivision').value = initial.subdivision || '';
   $('#report-estimate').checked = !!initial.estimate;
   const result = await showDialog($('#report-dialog'));
   const name = $('#report-name').value.trim();
   const date = $('#report-date').value;
-  const estimate = $('#report-estimate').checked;
-  const subdivision = $('#report-subdivision').value.trim();
-  return result === 'ok' && name && date ? { name, date, subdivision, estimate } : null;
+  if (result !== 'ok' || !name || !date) return null;
+  const id = select.value && select.value !== 'none' ? select.value : null;
+  const picked = controllers.find((c) => c.id === id);
+  return {
+    name,
+    date,
+    estimate: $('#report-estimate').checked,
+    subdivision: $('#report-subdivision').value.trim(),
+    controllerId: id,
+    controllerName: picked ? picked.name : id === initial.controllerId ? initial.controllerName || '' : '',
+  };
 }
 
 async function editReport(report) {
@@ -1999,7 +2028,7 @@ async function editController(existing) {
   const folder = await db.getFolder(current.id);
   const list = folder.controllers || [];
   if (answer === 'delete') {
-    if (!(await askConfirm('Delete controller', `Remove “${c.name}” from this property?`))) return;
+    if (!(await askConfirm('Delete controller', `Remove “${c.name}” from this property? Reports already started from it keep its name.`))) return;
     await db.updateFolder(current.id, { controllers: list.filter((x) => x.id !== c.id) });
     return render();
   }
@@ -2020,6 +2049,10 @@ async function editController(existing) {
   };
   const next = existing ? list.map((x) => (x.id === c.id ? saved : x)) : [...list, saved];
   await db.updateFolder(current.id, { controllers: next });
+  if (existing && saved.name !== c.name) {
+    // Reports started from this controller show its new name.
+    for (const r of await db.getAllReports()) if (r.controllerId === c.id) await db.updateReport(r.id, { controllerName: saved.name });
+  }
   render();
 }
 

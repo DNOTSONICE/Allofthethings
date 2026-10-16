@@ -128,7 +128,7 @@ export async function createBackup(appVersion, folderId = null, { makePdf, progr
     }
   }
 
-  // Reports: <folder>/<subdivision>/<date name>/ with the PDF and a Photos folder.
+  // Reports: <folder>/<controller or subdivision>/<date name>/ with the PDF and a Photos folder.
   const findingsBy = new Map();
   for (const f of data.findings) {
     if (!findingsBy.has(f.reportId)) findingsBy.set(f.reportId, []);
@@ -139,7 +139,7 @@ export async function createBackup(appVersion, folderId = null, { makePdf, progr
     const report = data.reports[r];
     const parent = byId.get(report.folderId);
     const base = (parent ? folderDir(parent) : '')
-      + (report.subdivision ? fileSafe(report.subdivision) + '/' : '')
+      + (report.controllerName || report.subdivision ? fileSafe(report.controllerName || report.subdivision) + '/' : '')
       + fileSafe(`${report.date} ${report.name}`) + '/';
     progress(`Report ${r + 1} of ${data.reports.length}: ${report.name}`);
     addDir(base);

@@ -262,11 +262,12 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     doc.text(l, MARGIN, y + 26);
     y += lineHeight(28);
   }
-  // Subdivision, when the report has one, under the property name.
-  if (report.subdivision) {
+  // Controller (or, on older reports, subdivision) under the property name.
+  const group = report.controllerName || report.subdivision;
+  if (group) {
     font('normal', 14);
     color(MUTED);
-    for (const l of doc.splitTextToSize(report.subdivision, CONTENT_W)) {
+    for (const l of doc.splitTextToSize(group, CONTENT_W)) {
       doc.text(l, MARGIN, y + 20);
       y += lineHeight(14);
     }
@@ -769,7 +770,7 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
     }
     font('normal', 8.5);
     color(MUTED);
-    doc.text(`${[propertyName, report.subdivision].filter(Boolean).join(', ')}  ·  ${formatDate(report.date)}`, PAGE_W - MARGIN, MARGIN + 8, { align: 'right' });
+    doc.text(`${[propertyName, report.controllerName || report.subdivision].filter(Boolean).join(', ')}  ·  ${formatDate(report.date)}`, PAGE_W - MARGIN, MARGIN + 8, { align: 'right' });
     stroke(ACCENT, 1.2);
     doc.line(MARGIN, MARGIN + 18, PAGE_W - MARGIN, MARGIN + 18);
 
