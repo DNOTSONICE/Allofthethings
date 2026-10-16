@@ -4,13 +4,14 @@ import { compressPhoto, compressLogo } from './photo.js';
 import { loadIssueList, saveIssueList, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
 import { createBackup, readBackup, restoreBackup } from './backup.js';
+import { drawSignature } from './signature.js';
 import { getPosition, readExif, lookupCity, coordsText, mapUrl, stampDetails, copyText, formatTime } from './location.js';
 
 const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 23;
+const APP_VERSION = 24;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -405,7 +406,7 @@ let companyLogoUrl = null;
 async function renderSettings() {
   current = { kind: 'settings', id: '', record: null };
   setHeader({ title: 'Settings', back: true });
-  await Promise.all([renderCompanyCard(), renderIssuesCard(), renderDisclaimerCard(), renderBackupCard(false)]);
+  await Promise.all([renderCompanyCard(), renderIssuesCard(), renderDisclaimerCard(), renderSignatureCard(), renderBackupCard(false)]);
   $('#settings-version').textContent = `App version ${APP_VERSION}`;
   showView('settings');
 }
@@ -1012,13 +1013,30 @@ async function reportPdf(report) {
     companyName,
     accent: accent || DEFAULT_ACCENT,
     contact: profile && profile.contact ? profile.contact : null,
+    signature: await signatureFor(report),
     groups: groupByZone(findings),
     zoneName,
   });
   return { blob, name: pdfFileName(property, report) };
 }
 
-function exportPdf(report) {
+// Before exporting, the report is signed: it starts from the default signature in Settings
+// (or what was used last time for this report) and can be changed for this report only.
+async function exportPdf(report) {
+  const def = await defaultSignature();
+  const saved = report.signature;
+  if (def.on || saved) {
+    const start = saved
+      ? { on: !saved.off, image: report.signatureImage || null, name: saved.name || '', role: saved.role || '', date: saved.date || today() }
+      : { on: true, image: def.image, name: def.name, role: def.role, date: today() };
+    const r = await askSignature({ mode: 'report', ...start, defaults: def });
+    if (!r) return;
+    report = await db.updateReport(report.id, {
+      signature: { off: !r.on, name: r.name, role: r.role, date: r.date },
+      signatureImage: r.on ? r.image : null,
+    });
+    if (current.kind === 'report' && current.id === report.id) current.record = report;
+  }
   return deliverFile({
     working: 'Making PDF…',
     workingText: 'This takes a few seconds for reports with lots of photos.',
@@ -1028,6 +1046,127 @@ function exportPdf(report) {
     build: () => reportPdf(report),
   });
 }
+
+// ---------- Signature ----------
+// Settings hold the default: 'signatureImage' (PNG Blob), 'signatureName', 'signatureRole',
+// 'signatureEnabled'. A report keeps what it was signed with: report.signature
+// { off, name, role, date } and report.signatureImage (kept top-level so db.put copies the Blob).
+
+async function defaultSignature() {
+  const [image, name, role, on] = await Promise.all(['signatureImage', 'signatureName', 'signatureRole', 'signatureEnabled'].map((k) => db.getSetting(k)));
+  return { on: !!on, image: image instanceof Blob ? image : null, name: name || '', role: role || '' };
+}
+
+async function signatureFor(report) {
+  if (report.signature) {
+    const s = report.signature;
+    return s.off || (!report.signatureImage && !s.name) ? null : { image: report.signatureImage || null, name: s.name, role: s.role, date: s.date || report.date };
+  }
+  const def = await defaultSignature();
+  return def.on && (def.image || def.name) ? { image: def.image, name: def.name, role: def.role, date: report.date } : null;
+}
+
+let signatureUrl = null;
+function showSignatureImage(img, empty, blob) {
+  if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+  delete img.dataset.url;
+  img.hidden = !blob;
+  if (blob) {
+    img.dataset.url = URL.createObjectURL(blob);
+    img.src = img.dataset.url;
+  } else img.removeAttribute('src');
+  if (empty) empty.hidden = !!blob;
+}
+
+// mode 'settings' edits the default; mode 'report' signs one report before export.
+// Resolves with { on, image, name, role, date } or null if cancelled.
+async function askSignature({ mode, on, image, name, role, date = today(), defaults = null }) {
+  const forReport = mode === 'report';
+  $('#signature-title').textContent = forReport ? 'Sign this report' : 'Technician signature';
+  $('#signature-hint').textContent = forReport
+    ? 'Changes here apply to this report only. Your default signature is set in Settings.'
+    : 'Your default signature. Before each export you can sign again or change it for that report.';
+  $('#signature-enabled-label').textContent = forReport ? 'Include a signature on this report' : 'Sign reports when exporting';
+  $('#signature-submit').textContent = forReport ? 'Export PDF' : 'Save';
+  $('#signature-date-box').hidden = !forReport;
+  const hasDefault = !!(defaults && (defaults.image || defaults.name));
+  $('#signature-default').hidden = !forReport || !hasDefault;
+
+  const box = $('#signature-enabled');
+  const show = () => {
+    showSignatureImage($('#signature-img'), $('#signature-empty'), image);
+    $('#signature-clear').disabled = !image;
+    $('#signature-sign').textContent = image ? 'Re-sign' : 'Sign';
+  };
+  const showFields = () => ($('#signature-fields').hidden = !box.checked);
+  box.checked = on;
+  box.onchange = showFields;
+  $('#signature-name').value = name;
+  $('#signature-role').value = role;
+  $('#signature-date').value = date;
+  const sign = async () => {
+    const drawn = await drawSignature();
+    if (drawn === undefined) return;
+    image = drawn;
+    show();
+  };
+  $('#signature-preview').onclick = sign;
+  $('#signature-sign').onclick = sign;
+  $('#signature-clear').onclick = () => {
+    image = null;
+    show();
+  };
+  $('#signature-default').onclick = () => {
+    image = defaults.image;
+    $('#signature-name').value = defaults.name;
+    $('#signature-role').value = defaults.role;
+    box.checked = true;
+    showFields();
+    show();
+  };
+  show();
+  showFields();
+  const result = await showDialog($('#signature-dialog'));
+  showSignatureImage($('#signature-img'), null, null);
+  if (result !== 'ok') return null;
+  return {
+    on: box.checked,
+    image,
+    name: $('#signature-name').value.trim(),
+    role: $('#signature-role').value.trim(),
+    date: $('#signature-date').value || today(),
+  };
+}
+
+async function renderSignatureCard() {
+  const def = await defaultSignature();
+  const set = def.image || def.name;
+  $('#settings-signature-name').textContent = `Technician signature: ${def.on ? 'on' : 'off'}`;
+  $('#settings-signature-detail').textContent = !set
+    ? 'Set up the signature for your exported reports.'
+    : [def.name, def.role].filter(Boolean).join(', ') || 'Signature saved';
+  if (signatureUrl) URL.revokeObjectURL(signatureUrl);
+  signatureUrl = def.image ? URL.createObjectURL(def.image) : null;
+  const img = $('#settings-signature-img');
+  img.hidden = !def.image;
+  if (def.image) img.src = signatureUrl;
+  else img.removeAttribute('src');
+}
+
+$('#settings-signature').addEventListener('click', async () => {
+  const def = await defaultSignature();
+  const first = !def.image && !def.name;
+  const r = await askSignature({ mode: 'settings', on: first ? true : def.on, image: def.image, name: def.name, role: def.role });
+  if (!r) return;
+  await Promise.all([
+    db.setSetting('signatureEnabled', r.on),
+    db.setSetting('signatureImage', r.image),
+    db.setSetting('signatureName', r.name),
+    db.setSetting('signatureRole', r.role),
+  ]);
+  renderSignatureCard();
+  showToast('Signature saved.', 'ok');
+});
 
 // ---------- Backup and restore ----------
 

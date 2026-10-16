@@ -105,7 +105,7 @@ const tint = (c, amount) => c.map((v) => Math.round(v + (255 - v) * amount));
  * contact:  null, or the property's contact { name, phone, email, address } for the cover
  * Returns a Blob.
  */
-export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null, contact = null }) {
+export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null, contact = null, signature = null }) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ unit: 'pt', format: 'letter' });
   const propertyName = property.join(' / ') || 'Wet check';
@@ -617,6 +617,48 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       doc.text(`${n} ${n === 1 ? 'finding is' : 'findings are'} not priced and not included in the total.`, MARGIN, y + 9);
       y += 18;
     }
+  }
+
+  // ================= Signature =================
+  // signature: { image (PNG Blob) | null, name, role, date }
+  if (signature) {
+    const sigImg = signature.image ? await loadImage(doc, signature.image) : null;
+    const blockH = 132;
+    ensure(blockH + 20);
+    y += 18;
+    label('Technician signature', MARGIN, y + 8);
+    y += 18;
+    const lineY = y + 78;
+    const sigW = 270;
+    const dateX = MARGIN + sigW + 50;
+    if (sigImg) {
+      const s = Math.min((sigW - 10) / sigImg.w, 70 / sigImg.h, 1.2);
+      const w = sigImg.w * s;
+      const h = sigImg.h * s;
+      doc.addImage(sigImg.data, sigImg.format, MARGIN + 4, lineY - h - 2, w, h, undefined, 'FAST');
+    }
+    stroke(INK, 0.8);
+    doc.line(MARGIN, lineY, MARGIN + sigW, lineY);
+    doc.line(dateX, lineY, PAGE_W - MARGIN, lineY);
+    font('normal', 11);
+    color(INK);
+    if (signature.date) doc.text(formatDate(signature.date), dateX + 2, lineY - 8);
+    label('Signature', MARGIN, lineY + 13, MUTED, 7);
+    label('Date', dateX, lineY + 13, MUTED, 7);
+    let ny = lineY + 30;
+    if (signature.name) {
+      font('bold', 11);
+      color(INK);
+      doc.text(signature.name, MARGIN, ny);
+      ny += 14;
+    }
+    if (signature.role) {
+      font('normal', 10);
+      color(MUTED);
+      doc.text(signature.role, MARGIN, ny);
+      ny += 14;
+    }
+    y = ny;
   }
 
   // ================= Header and footer on inside pages =================

@@ -112,6 +112,13 @@
           <span id="settings-disclaimer-detail" class="row-detail"></span>
         </span>
       </button>
+      <button id="settings-signature" class="company-card">
+        <span id="settings-signature-box" class="company-logo-box backup-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c2.5-6 4.5-9 6-9 2 0-1.5 8 .5 8 1.3 0 2.2-3 3.5-3 1 0 .8 2 2 2 1 0 1.6-1 2.5-1M3 21h18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><img id="settings-signature-img" alt="" hidden></span>
+        <span class="row-text">
+          <span id="settings-signature-name" class="row-name">Technician signature</span>
+          <span id="settings-signature-detail" class="row-detail"></span>
+        </span>
+      </button>
       <button id="settings-backup-card" class="company-card">
         <span class="company-logo-box backup-icon">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18zm5-8v6m0-6l-2.5 2.5M12 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -328,6 +335,62 @@
         <button id="disclaimer-reset" type="button" class="btn start">Reset</button>
         <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
         <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="signature-dialog">
+    <form data-ok>
+      <h2 id="signature-title">Technician signature</h2>
+      <p id="signature-hint" class="hint"></p>
+      <label class="check signature-enabled">
+        <input id="signature-enabled" type="checkbox">
+        <span id="signature-enabled-label">Sign reports when exporting</span>
+      </label>
+      <div id="signature-fields">
+        <button id="signature-preview" type="button" class="signature-preview" aria-label="Sign">
+          <img id="signature-img" alt="Signature" hidden>
+          <span id="signature-empty">Tap to sign</span>
+        </button>
+        <div class="photo-buttons">
+          <button id="signature-sign" type="button" class="btn outline">Sign</button>
+          <button id="signature-clear" type="button" class="btn outline">Clear</button>
+          <button id="signature-default" type="button" class="btn outline" hidden>Default</button>
+        </div>
+        <div class="sig-grid">
+          <div>
+            <label class="label" for="signature-name">Name</label>
+            <input id="signature-name" class="field" type="text" autocomplete="name" autocapitalize="words" maxlength="80">
+          </div>
+          <div>
+            <label class="label" for="signature-role">Title <span class="optional">(optional)</span></label>
+            <input id="signature-role" class="field" type="text" autocapitalize="words" maxlength="80" placeholder="Technician">
+          </div>
+          <div id="signature-date-box" class="sig-wide">
+            <label class="label" for="signature-date">Date signed</label>
+            <input id="signature-date" class="field" type="date">
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button id="signature-submit" type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="sigpad-dialog" class="sigpad">
+    <form data-ok>
+      <h2>Sign below</h2>
+      <div class="sigpad-wrap">
+        <canvas id="sigpad-canvas"></canvas>
+        <span id="sigpad-hint" class="sigpad-hint">Sign here with your finger</span>
+        <span class="sigpad-line"></span>
+      </div>
+      <div class="actions">
+        <button id="sigpad-clear" type="button" class="btn start">Clear</button>
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Done</button>
       </div>
     </form>
   </dialog>

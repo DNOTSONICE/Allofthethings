@@ -1,6 +1,6 @@
 // Offline support: caches the app files so it opens without a connection.
 // Bump VERSION whenever any file below changes so phones pick up the update.
-const VERSION = 'v23';
+const VERSION = 'v24';
 const CACHE = `wetcheck-${VERSION}`;
 const FILES = [
   './',
@@ -15,6 +15,7 @@ const FILES = [
   './js/pdf.js',
   './js/backup.js',
   './js/zip.js',
+  './js/signature.js',
   './js/vendor/jspdf.umd.min.js',
   './data/issues.json',
   './manifest.webmanifest',

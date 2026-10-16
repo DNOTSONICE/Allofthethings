@@ -91,10 +91,13 @@ export async function createBackup(appVersion, folderId = null, { makePdf, progr
     addDir('Settings/');
     const logo = setting('companyLogo');
     if (logo instanceof Blob) add(`Settings/Company logo.${extOf(logo)}`, logo);
+    const sig = setting('signatureImage');
+    if (sig instanceof Blob) add(`Settings/Signature.${extOf(sig)}`, sig);
     const lines = [
       `Company name: ${setting('companyName') || ''}`,
       `Report accent color: ${setting('accentColor') || 'default'}`,
       `Troubleshooting disclaimer: ${setting('disclaimer') || 'default'}`,
+      `Technician signature: ${setting('signatureEnabled') ? 'on' : 'off'}${setting('signatureName') ? `, ${setting('signatureName')}` : ''}${setting('signatureRole') ? `, ${setting('signatureRole')}` : ''}`,
     ];
     add('Settings/Settings.txt', lines.join('\n') + '\n');
     if (issueList) {
