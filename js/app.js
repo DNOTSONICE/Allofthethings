@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 32;
+const APP_VERSION = 33;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -1057,6 +1057,7 @@ async function reportPdf(report) {
     accent: accent || DEFAULT_ACCENT,
     contact: profile && profile.contact ? profile.contact : null,
     signature: await signatureFor(report),
+    controllers: path.length ? path[0].controllers || [] : [],
     groups: groupByZone(findings),
     zoneName,
   });

@@ -106,7 +106,7 @@ const tint = (c, amount) => c.map((v) => Math.round(v + (255 - v) * amount));
  * contact:  null, or the property's contact { name, phone, email, address } for the cover
  * Returns a Blob.
  */
-export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null, contact = null, signature = null }) {
+export async function buildReportPdf({ report, property, propertyPhoto, logo, companyName, accent, groups, zoneName, estimate = null, contact = null, signature = null, controllers = [] }) {
   const JsPDF = await loadJsPdf();
   const doc = new JsPDF({ unit: 'pt', format: 'letter' });
   const propertyName = property.join(' / ') || 'Wet check';
@@ -153,6 +153,82 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
   }
   function ensure(h) {
     if (y + h > bodyBottom) newPage();
+  }
+
+  // One controller: photo on the left, its details in a grid, then the two GPS spots and notes.
+  async function controllerCard(c) {
+    const PAD = 12;
+    const img = c.photo ? await loadImage(doc, c.photo) : null;
+    const PH = 84;
+    const photo = img ? (() => {
+      const sc = Math.min(PH / img.w, PH / img.h);
+      return { ...img, dw: img.w * sc, dh: img.h * sc };
+    })() : null;
+    const x = MARGIN + PAD + (photo ? PH + PAD : 0);
+    const w = PAGE_W - MARGIN - PAD - x;
+    const yesNo = (v) => (v === 'yes' ? 'Yes' : v === 'no' ? 'No' : 'Not set');
+    const facts = [
+      ['Make / model', [c.make, c.model].filter(Boolean).join(' ') || 'Not set'],
+      ['Zones', c.zones ? String(c.zones) : 'Not set'],
+      ['Water', c.water === 'pump' ? 'Pump fed' : c.water === 'municipal' ? 'Municipal' : 'Not set'],
+      ['Rain sensor', yesNo(c.rainSensor)],
+      ['Master valve', yesNo(c.masterValve)],
+    ];
+    const spots = [['Controller location', c.location], ['Point of connection', c.pocLocation]];
+    font('normal', 9.5);
+    const info = c.poc ? doc.splitTextToSize(c.poc, w) : [];
+    font('bold', 12.5);
+    const nameLines = doc.splitTextToSize(c.name || 'Controller', w);
+    const textH = nameLines.length * lineHeight(12.5) + 6 + 30 + 30 + (info.length ? 14 + info.length * lineHeight(9.5) : 0);
+    const h = Math.max(photo ? PH : 0, textH) + PAD * 2;
+    ensure(h + 10);
+    const top = y;
+    fill(ACCENT_SOFT);
+    doc.rect(MARGIN, top, CONTENT_W, h, 'F');
+    fill(ACCENT);
+    doc.rect(MARGIN, top, 3, h, 'F');
+    if (photo) {
+      doc.addImage(photo.data, photo.format, MARGIN + PAD + (PH - photo.dw) / 2, top + PAD + (PH - photo.dh) / 2, photo.dw, photo.dh);
+    }
+    let ty = top + PAD;
+    font('bold', 12.5);
+    color(INK);
+    for (const l of nameLines) {
+      doc.text(l, x, ty + 12.5);
+      ty += lineHeight(12.5);
+    }
+    ty += 6;
+    // Facts in a row of columns: Make / model gets the most room.
+    const widths = [0.32, 0.12, 0.2, 0.18, 0.18].map((f) => f * w);
+    let fx = x;
+    facts.forEach(([k, v], i) => {
+      label(k, fx, ty + 7, MUTED, 6.5);
+      font('bold', 9.5);
+      color(INK);
+      doc.text(doc.splitTextToSize(v, widths[i] - 6)[0], fx, ty + 20);
+      fx += widths[i];
+    });
+    ty += 30;
+    spots.forEach(([k, loc], i) => {
+      const sx = x + i * (w / 2);
+      label(k, sx, ty + 7, MUTED, 6.5);
+      font(loc ? 'bold' : 'normal', 9.5);
+      color(loc ? ACCENT : MUTED);
+      if (loc) linkText(coordsText(loc), sx, ty + 20, pdfMapUrl(loc));
+      else doc.text('Not recorded', sx, ty + 20);
+    });
+    ty += 30;
+    if (info.length) {
+      label('Pump / backflow', x, ty + 7, MUTED, 6.5);
+      ty += 14;
+      font('normal', 9.5);
+      color(INK);
+      for (const l of info) {
+        doc.text(l, x, ty + 9.5);
+        ty += lineHeight(9.5);
+      }
+    }
+    y = top + h + 10;
   }
 
   const total = groups.reduce((n, [, items]) => n + items.filter((f) => f.mark !== 'ok').length, 0); // zones marked OK aren't findings
@@ -303,6 +379,19 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
 
   // ================= Findings =================
   newPage();
+
+  // Quick summary of the property's controllers, ahead of the findings.
+  if (controllers.length) {
+    font('bold', 18);
+    color(INK);
+    doc.text(controllers.length === 1 ? 'Controller' : 'Controllers', MARGIN, y + 18);
+    fill(ACCENT);
+    doc.rect(MARGIN, y + 26, 40, 3, 'F');
+    y += 44;
+    for (const c of controllers) await controllerCard(c);
+    y += 10;
+  }
+
 
   font('bold', 18);
   color(INK);
