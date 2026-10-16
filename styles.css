@@ -750,3 +750,15 @@ details.zone-group:not([open]) > .section-title { margin-top: 0; }
 .controller-photo-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .controller-photo-actions .danger-text { margin-left: auto; }
 .row-open img.ico.thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
+
+/* Estimate discount */
+.estimate-subrow { display: flex; justify-content: space-between; padding: 12px 0 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.estimate-discount { display: flex; width: 100%; justify-content: space-between; gap: 10px; padding: 10px 0; margin: 0; border: 0; border-bottom: 1px solid var(--line); background: none; font: inherit; color: var(--accent); text-align: left; cursor: pointer; }
+.estimate-discount.has { color: inherit; }
+.estimate-discount.has .line-amount { color: var(--ok, #1a7f37); }
+.segmented { display: flex; gap: 0; margin: 12px 0 4px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.segmented label { flex: 1; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span { display: block; padding: 10px 8px; text-align: center; font-weight: 600; cursor: pointer; }
+.segmented input:checked + span { background: var(--accent); color: #fff; }
+.segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -4px; }

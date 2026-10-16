@@ -561,10 +561,36 @@
     </form>
   </dialog>
 
+  <dialog id="discount-dialog">
+    <form data-ok>
+      <h2>Discount</h2>
+      <p class="hint">Taken off this report's estimate total. Prices on the findings don't change.</p>
+      <div class="segmented" role="radiogroup" aria-label="Discount type">
+        <label><input type="radio" name="discount-type" value="amount" checked><span>Dollar amount</span></label>
+        <label><input type="radio" name="discount-type" value="percent"><span>Percentage</span></label>
+      </div>
+      <label class="label" for="discount-value" id="discount-value-label">Amount ($)</label>
+      <input id="discount-value" class="field" type="text" inputmode="decimal" autocomplete="off" required maxlength="12" placeholder="e.g. 50">
+      <label class="label" for="discount-label">Label <span class="optional">(optional)</span></label>
+      <input id="discount-label" class="field" type="text" autocomplete="off" autocapitalize="sentences" maxlength="60" placeholder="e.g. Repeat customer discount">
+      <p id="discount-preview" class="hint"></p>
+      <div class="actions">
+        <button id="discount-remove" type="button" class="btn danger-text start" hidden>Remove</button>
+        <button type="button" class="btn" onclick="this.closest('dialog').close('cancel')">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="estimate-dialog" class="full">
     <form method="dialog">
       <h2>Repair estimate</h2>
       <ul id="estimate-lines" class="estimate-lines"></ul>
+      <div id="estimate-subtotal-row" class="estimate-subrow" hidden><span>Subtotal</span><span id="estimate-subtotal"></span></div>
+      <button id="estimate-discount" type="button" class="estimate-discount">
+        <span id="estimate-discount-label">+ Add a discount</span>
+        <span id="estimate-discount-amount" class="line-amount"></span>
+      </button>
       <div class="estimate-sum"><span>Total</span><span id="estimate-sum"></span></div>
       <p id="estimate-unpriced" class="hint warn" hidden></p>
       <div class="actions">

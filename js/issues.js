@@ -144,7 +144,9 @@ export function findingPrice(finding, list, snapshot = null) {
 
 // Repair estimate lines for a report: one line per issue and price, with how many and which zones.
 // Returns { lines: [{ issue, unit, qty, amount, zones }], total, unpriced, prices: [[findingId, price]] }.
-export function buildEstimate(findings, list, snapshot = null) {
+// adjustment: the report's discount, { type: 'amount' | 'percent', value, label? }, or null.
+// The result's total is after the discount; subtotal is before it.
+export function buildEstimate(findings, list, snapshot = null, adjustment = null) {
   const lines = new Map();
   const prices = [];
   for (const f of findings) {
@@ -167,5 +169,28 @@ export function buildEstimate(findings, list, snapshot = null) {
       total += line.amount;
     }
   }
-  return { lines: [...lines.values()], total: Math.round(total * 100) / 100, unpriced, prices };
+  const subtotal = Math.round(total * 100) / 100;
+  const discount = discountAmount(subtotal, adjustment);
+  return {
+    lines: [...lines.values()],
+    subtotal,
+    discount,
+    discountLabel: discount ? discountLabel(adjustment) : '',
+    total: Math.round((subtotal - discount) * 100) / 100,
+    unpriced,
+    prices,
+  };
+}
+
+// The discount in dollars, never more than the subtotal.
+export function discountAmount(subtotal, adj) {
+  if (!adj || !(adj.value > 0)) return 0;
+  const d = adj.type === 'percent' ? (subtotal * Math.min(adj.value, 100)) / 100 : adj.value;
+  return Math.round(Math.min(d, subtotal) * 100) / 100;
+}
+
+// "Discount (10%)" or the label typed for it, e.g. "HOA loyalty discount (10%)".
+export function discountLabel(adj) {
+  const base = (adj.label || '').trim() || 'Discount';
+  return adj.type === 'percent' ? `${base} (${+adj.value.toFixed(2)}%)` : base;
 }

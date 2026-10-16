@@ -39,7 +39,7 @@ Folders and subdivisions inside a property use its profile. **Reset this propert
 
 ## Repair estimates
 
-Each report has an optional **Include a repair estimate** checkbox (also in the report's ⋮ menu). With it on, each finding is priced from the prices in effect when the report was created (main list plus the property's profile), or a price typed on that finding. Later price changes don't change existing reports; use **Use current prices** in the report's ⋮ menu or the estimate to update one, the report shows a running total, and the PDF adds the total to the cover and a Repair estimate page with quantity, unit price and amount per repair. Findings whose issue has no price are listed but left out of the total.
+Each report has an optional **Include a repair estimate** checkbox (also in the report's ⋮ menu). With it on, each finding is priced from the prices in effect when the report was created (main list plus the property's profile), or a price typed on that finding. Later price changes don't change existing reports; use **Use current prices** in the report's ⋮ menu or the estimate to update one, the report shows a running total, and the PDF adds the total to the cover and a Repair estimate page with quantity, unit price and amount per repair. Findings whose issue has no price are listed but left out of the total. Tap **+ Add a discount** in the estimate to take a dollar amount or a percentage off the total, with an optional label; the PDF shows the subtotal, the discount and the total after it.
 
 ## Troubleshooting disclaimer
 

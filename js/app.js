@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import { showDialog, askName, askAction, askConfirm, plural, formatDate, today } from './ui.js';
 import { compressPhoto, compressLogo } from './photo.js';
-import { loadIssueList, saveIssueList, addNewDefaults, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot } from './issues.js';
+import { loadIssueList, saveIssueList, addNewDefaults, resetIssueList, findIssue, toPrice, formatMoney, findingPrice, buildEstimate, effectiveList, priceSnapshot, discountAmount, discountLabel } from './issues.js';
 import { buildReportPdf, pdfFileName, DEFAULT_ACCENT } from './pdf.js';
 import { createBackup, readBackup, restoreBackup } from './backup.js';
 import { drawSignature } from './signature.js';
@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 35;
+const APP_VERSION = 36;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -1048,7 +1048,7 @@ async function reportPdf(report) {
     issueListFor(report.folderId),
   ]);
   const property = path.map((f) => f.name);
-  const estimate = report.estimate ? buildEstimate(findings, list, report.prices) : null;
+  const estimate = report.estimate ? buildEstimate(findings, list, report.prices, report.discount) : null;
   const profile = path.length ? path[0].profile : null;
   const blob = await buildReportPdf({
     estimate,
@@ -1366,18 +1366,18 @@ function renderEstimateBar(report, findings, list) {
   const bar = $('#estimate-bar');
   bar.hidden = !list;
   if (!list) return;
-  const est = buildEstimate(findings, list, report.prices);
+  const est = buildEstimate(findings, list, report.prices, report.discount);
   $('#estimate-total').textContent = formatMoney(est.total);
   const detail = $('#estimate-detail');
   detail.classList.toggle('warn', est.unpriced > 0);
   if (!findings.length) detail.textContent = 'Findings are priced from your price list as you add them.';
   else if (est.unpriced) detail.textContent = `${plural(est.unpriced, 'finding')} without a price, not included. Tap to see the estimate.`;
-  else detail.textContent = `${plural(findings.length, 'finding')} priced. Tap to see the estimate.`;
+  else detail.textContent = `${plural(findings.length, 'finding')} priced${est.discount ? `, ${formatMoney(est.discount)} off` : ''}. Tap to see the estimate.`;
 }
 
 async function showEstimate(report) {
   const [findings, list] = await Promise.all([db.listFindings(report.id), issueListFor(report.folderId)]);
-  const est = buildEstimate(findings, list, report.prices);
+  const est = buildEstimate(findings, list, report.prices, report.discount);
   $('#estimate-lines').replaceChildren(...est.lines.map((l) => {
     const li = document.createElement('li');
     const text = document.createElement('span');
@@ -1395,6 +1395,19 @@ async function showEstimate(report) {
     return li;
   }));
   $('#estimate-sum').textContent = formatMoney(est.total);
+  $('#estimate-subtotal-row').hidden = !report.discount;
+  $('#estimate-subtotal').textContent = formatMoney(est.subtotal);
+  const disc = $('#estimate-discount');
+  disc.classList.toggle('has', !!report.discount);
+  $('#estimate-discount-label').textContent = report.discount ? discountLabel(report.discount) : '+ Add a discount';
+  $('#estimate-discount-amount').textContent = report.discount ? `−${formatMoney(est.discount)}` : '';
+  disc.onclick = async () => {
+    $('#estimate-dialog').close('cancel');
+    if (await editDiscount(report, est.subtotal)) {
+      render();
+      showEstimate(await db.getReport(report.id));
+    }
+  };
   const warn = $('#estimate-unpriced');
   warn.hidden = !est.unpriced;
   warn.textContent = `${plural(est.unpriced, 'finding')} without a price ${est.unpriced === 1 ? 'isn’t' : 'aren’t'} included. Set prices in Settings or the property profile, or type a price on the finding.`;
@@ -1406,6 +1419,48 @@ async function showEstimate(report) {
 }
 
 $('#estimate-bar').addEventListener('click', () => showEstimate(current.record));
+
+// A dollar or percentage discount off this report's estimate. Resolves true if it changed.
+async function editDiscount(report, subtotal) {
+  const d = report.discount || { type: 'amount', value: null, label: '' };
+  const radios = [...document.querySelectorAll('input[name="discount-type"]')];
+  const value = $('#discount-value');
+  const preview = $('#discount-preview');
+  radios.forEach((r) => (r.checked = r.value === d.type));
+  value.value = d.value == null ? '' : String(d.value);
+  $('#discount-label').value = d.label || '';
+  $('#discount-remove').hidden = !report.discount;
+  $('#discount-remove').onclick = () => $('#discount-dialog').close('remove');
+  const type = () => (radios.find((r) => r.checked) || radios[0]).value;
+  const parse = () => {
+    const n = toPrice(value.value.replace('%', ''));
+    return n && n > 0 ? n : null;
+  };
+  const update = () => {
+    const pct = type() === 'percent';
+    $('#discount-value-label').textContent = pct ? 'Percentage (%)' : 'Amount ($)';
+    value.placeholder = pct ? 'e.g. 10' : 'e.g. 50';
+    const n = parse();
+    const bad = value.value.trim() && (!n || (pct && n > 100));
+    value.setCustomValidity(bad ? (pct ? 'Enter a percentage from 0 to 100.' : 'Enter a dollar amount.') : '');
+    if (!n || bad) return (preview.textContent = '');
+    const off = discountAmount(subtotal, { type: type(), value: n });
+    preview.textContent = `${formatMoney(off)} off ${formatMoney(subtotal)}, new total ${formatMoney(subtotal - off)}.`
+      + (!pct && n > subtotal ? ' (Capped at the current subtotal.)' : '');
+  };
+  radios.forEach((r) => (r.onchange = update));
+  value.oninput = update;
+  update();
+  const answer = await showDialog($('#discount-dialog'));
+  value.oninput = null;
+  if (answer === 'remove') {
+    await db.updateReport(report.id, { discount: null });
+    return true;
+  }
+  if (answer !== 'ok' || !parse()) return false;
+  await db.updateReport(report.id, { discount: { type: type(), value: parse(), label: $('#discount-label').value.trim() } });
+  return true;
+}
 
 // ---------- Issues and prices ----------
 

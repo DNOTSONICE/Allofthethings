@@ -687,11 +687,22 @@ export async function buildReportPdf({ report, property, propertyPhoto, logo, co
       y += h;
     });
 
-    // Total.
-    ensure(60);
+    // Total, after the discount when there is one.
+    ensure(60 + (estimate.discount ? 44 : 0));
     stroke(ACCENT, 1);
     doc.line(MARGIN, y, PAGE_W - MARGIN, y);
     y += 10;
+    if (estimate.discount) {
+      const lx = PAGE_W - MARGIN - 205;
+      font('normal', 10);
+      color(MUTED);
+      doc.text('Subtotal', lx, y + 12);
+      doc.text(formatMoney(estimate.subtotal), right, y + 12, { align: 'right' });
+      color(INK);
+      doc.text(doc.splitTextToSize(estimate.discountLabel, 140)[0], lx, y + 28);
+      doc.text(`-${formatMoney(estimate.discount)}`, right, y + 28, { align: 'right' });
+      y += 40;
+    }
     fill(ACCENT_SOFT);
     doc.rect(PAGE_W - MARGIN - 220, y, 220, 36, 'F');
     fill(ACCENT);
