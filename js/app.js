@@ -11,7 +11,7 @@ const $ = (sel) => document.querySelector(sel);
 
 // Shown on the home screen so it's easy to tell which version a phone is running.
 // Keep in step with VERSION in sw.js.
-const APP_VERSION = 37;
+const APP_VERSION = 38;
 
 const DEFAULT_DISCLAIMER = '*Troubleshooting required. Additional proposals may be required to complete this repair.';
 const DISCLAIMER_HINT = document.querySelector('#disclaimer-dialog .hint').textContent;
@@ -2612,4 +2612,7 @@ if ('serviceWorker' in navigator) {
 addNewDefaults()
   .catch(() => {})
   .then(lockMissingPrices)
-  .finally(render);
+  .finally(() => {
+    render();
+    db.storePhotosAsBytes().catch(() => {});
+  });
