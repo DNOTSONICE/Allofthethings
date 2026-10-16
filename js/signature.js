@@ -1,13 +1,30 @@
-// Finger signature pad. drawSignature() opens #sigpad-dialog and resolves with a PNG Blob of
-// what was drawn (cropped to the ink, transparent background), null if cleared, or undefined
-// if cancelled.
+// Signature pad. drawSignature() opens #sigpad-dialog, where the signature is either drawn
+// with a finger or typed in a handwriting font, and resolves with a PNG Blob (cropped to the
+// ink, transparent background), null if cleared, or undefined if cancelled.
+// The fonts ship with the app (fonts/), so typing works offline.
 
 import { showDialog } from './ui.js';
 
 const $ = (s) => document.querySelector(s);
 const INK = '#14213d';
+export const SIGNATURE_FONTS = ['Great Vibes', 'Dancing Script', 'Homemade Apple'];
+const STYLE_KEY = 'signatureStyle'; // last typed style picked, remembered on this phone
 
-export async function drawSignature() {
+function rememberStyle(v) {
+  try {
+    localStorage.setItem(STYLE_KEY, v);
+  } catch {}
+}
+function lastStyle() {
+  try {
+    return localStorage.getItem(STYLE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function drawSignature({ name = '' } = {}) {
+  const typed = setUpTyping(name);
   const dialog = $('#sigpad-dialog');
   const canvas = $('#sigpad-canvas');
   const ctx = canvas.getContext('2d');
@@ -77,8 +94,87 @@ export async function drawSignature() {
   $('#sigpad-clear').removeEventListener('click', clear);
   window.removeEventListener('resize', size);
 
+  typed.done();
   if (answer !== 'ok') return undefined;
+  if (typed.active()) {
+    const text = $('#sigpad-text').value.trim();
+    if (!text) return null;
+    rememberStyle(`type:${typed.font()}`);
+    return renderTyped(text, typed.font());
+  }
+  rememberStyle('draw');
   return drawn ? cropToInk(canvas) : null;
+}
+
+// The Type tab: a name box and one button per handwriting font, showing the name in it.
+function setUpTyping(name) {
+  const input = $('#sigpad-text');
+  const box = $('#sigpad-styles');
+  const last = lastStyle();
+  let font = last.startsWith('type:') && SIGNATURE_FONTS.includes(last.slice(5)) ? last.slice(5) : SIGNATURE_FONTS[0];
+  let typing = last.startsWith('type:');
+  input.value = name;
+  const buttons = SIGNATURE_FONTS.map((f) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sig-style';
+    b.style.fontFamily = `'${f}', cursive`;
+    b.setAttribute('aria-label', `Signature style ${f}`);
+    b.onclick = () => {
+      font = f;
+      paint();
+    };
+    return b;
+  });
+  box.replaceChildren(...buttons);
+  const paint = () => {
+    const text = input.value.trim() || 'Your name';
+    buttons.forEach((b, i) => {
+      b.textContent = text;
+      b.classList.toggle('on', SIGNATURE_FONTS[i] === font);
+    });
+  };
+  const show = () => {
+    $('#sigpad-tab-draw').classList.toggle('on', !typing);
+    $('#sigpad-tab-type').classList.toggle('on', typing);
+    $('#sigpad-draw').hidden = typing;
+    $('#sigpad-type').hidden = !typing;
+    $('#sigpad-clear').hidden = typing;
+    if (!typing) window.dispatchEvent(new Event('resize')); // the canvas sizes itself once visible
+  };
+  $('#sigpad-tab-draw').onclick = () => {
+    typing = false;
+    show();
+  };
+  $('#sigpad-tab-type').onclick = () => {
+    typing = true;
+    show();
+    input.focus();
+  };
+  input.oninput = paint;
+  paint();
+  show();
+  return { active: () => typing, font: () => font, done: () => (input.oninput = null) };
+}
+
+// The typed name drawn large in the chosen font, as a PNG.
+async function renderTyped(text, font) {
+  const size = 120;
+  const css = `${size}px '${font}'`;
+  try {
+    await document.fonts.load(css, text);
+  } catch {}
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  ctx.font = css;
+  const m = ctx.measureText(text);
+  c.width = Math.ceil(m.width + size * 0.8);
+  c.height = Math.ceil(size * 1.9);
+  ctx.font = css;
+  ctx.fillStyle = INK;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, size * 0.4, size * 1.25);
+  return cropToInk(c);
 }
 
 // The drawing cut down to the ink plus a little margin, as a PNG.

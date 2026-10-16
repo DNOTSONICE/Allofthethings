@@ -650,6 +650,15 @@ body:not(.in-report) .zone-panel { display: none; }
 #search-results .row-detail { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* Signature */
+@font-face { font-family: 'Great Vibes'; src: url('fonts/great-vibes.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Dancing Script'; src: url('fonts/dancing-script.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Homemade Apple'; src: url('fonts/homemade-apple.woff2') format('woff2'); font-display: swap; }
+.sig-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 12px; background: var(--bg); border-radius: 10px; }
+.sig-tab { flex: 1; border: 0; background: none; padding: 8px; border-radius: 8px; font: inherit; font-weight: 600; color: var(--muted); }
+.sig-tab.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.sig-styles { display: grid; gap: 8px; margin-top: 10px; }
+.sig-style { display: block; width: 100%; height: 64px; padding: 0 14px; text-align: left; border: 1.5px solid var(--line); border-radius: 12px; background: #fff; color: #14213d; font-size: 30px; line-height: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sig-style.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .signature-enabled { margin: 0 0 12px; }
 .signature-preview {
   display: grid; place-items: center; width: 100%; height: 96px; margin-bottom: 10px;

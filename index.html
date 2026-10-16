@@ -381,11 +381,19 @@
 
   <dialog id="sigpad-dialog" class="sigpad">
     <form data-ok>
-      <h2>Sign below</h2>
-      <div class="sigpad-wrap">
+      <h2>Your signature</h2>
+      <div class="sig-tabs" role="tablist">
+        <button id="sigpad-tab-draw" type="button" class="sig-tab on" role="tab">Draw</button>
+        <button id="sigpad-tab-type" type="button" class="sig-tab" role="tab">Type</button>
+      </div>
+      <div id="sigpad-draw" class="sigpad-wrap">
         <canvas id="sigpad-canvas"></canvas>
         <span id="sigpad-hint" class="sigpad-hint">Sign here with your finger</span>
         <span class="sigpad-line"></span>
+      </div>
+      <div id="sigpad-type" hidden>
+        <input id="sigpad-text" class="field" type="text" autocapitalize="words" autocomplete="name" maxlength="60" placeholder="Type your name" aria-label="Type your name">
+        <div id="sigpad-styles" class="sig-styles"></div>
       </div>
       <div class="actions">
         <button id="sigpad-clear" type="button" class="btn start">Clear</button>
